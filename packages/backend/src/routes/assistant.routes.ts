@@ -11,7 +11,12 @@
  */
 
 import type { FastifyInstance } from 'fastify';
-import { SchemeAssistant } from '../services/assistant/scheme-assistant';
+import type { SupportedLanguage } from '@bharat-benefits/shared';
+import {
+  SchemeAssistant,
+  type PineconeIndexLike,
+  type SchemeReader,
+} from '../services/assistant/scheme-assistant';
 import { getSchemeIndex, getSchemeNamespace } from '../lib/vectordb';
 import { getGeminiChatClient, createGeminiEmbeddingsClient } from '../lib/gemini';
 import prisma from '../lib/prisma';
@@ -23,16 +28,26 @@ export interface RegisterAssistantRoutesOptions {
 
 let cachedAssistant: SchemeAssistant | null = null;
 
+interface NamespaceablePineconeIndex extends PineconeIndexLike {
+  namespace(name: string): PineconeIndexLike;
+}
+
+const SUPPORTED_LANGUAGES = new Set<SupportedLanguage>(['en', 'hi', 'bn', 'ta', 'te', 'mr']);
+
+function isSupportedLanguage(value: unknown): value is SupportedLanguage {
+  return typeof value === 'string' && SUPPORTED_LANGUAGES.has(value as SupportedLanguage);
+}
+
 function getDefaultAssistant(): SchemeAssistant {
   if (cachedAssistant) return cachedAssistant;
 
-  const baseIndex = getSchemeIndex() as any;
+  const baseIndex = getSchemeIndex() as unknown as NamespaceablePineconeIndex;
   const namespace = getSchemeNamespace();
   const pineconeIndex = namespace ? baseIndex.namespace(namespace) : baseIndex;
 
   cachedAssistant = new SchemeAssistant({
     pineconeIndex,
-    prisma: prisma as any,
+    prisma: prisma as unknown as SchemeReader,
     openai: getGeminiChatClient(),
     embeddingsClient: createGeminiEmbeddingsClient(),
   });
@@ -57,7 +72,7 @@ export function registerAssistantRoutes(
       const sessionId = typeof body.sessionId === 'string' && body.sessionId.trim()
         ? body.sessionId.trim()
         : `anon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const language = typeof body.language === 'string' ? body.language : undefined;
+      const language = isSupportedLanguage(body.language) ? body.language : undefined;
 
       if (!query) {
         return reply.code(400).send({
@@ -71,13 +86,13 @@ export function registerAssistantRoutes(
         const response = await assistant.answerQuery(
           query,
           sessionId,
-          language as any,
+          language,
         );
 
         return reply.code(200).send({
           answer: response.answer,
           sources: response.sources,
-          sessionId: response.sessionId,
+          sessionId,
           language: response.language,
           traceId: response.traceId,
         });

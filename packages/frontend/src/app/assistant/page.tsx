@@ -212,7 +212,7 @@ export default function AssistantPage() {
 
         {isLoading && (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <Avatar role="assistant" />
+            <Avatar speaker="assistant" />
             <div
               style={{
                 padding: '14px 16px',
@@ -339,7 +339,7 @@ function MessageBubble({ message }: { message: AssistantMessage }) {
         animation: 'fadeUp 0.3s var(--ease)',
       }}
     >
-      <Avatar role={message.role} />
+      <Avatar speaker={message.role} />
       <div style={{ maxWidth: '75%', minWidth: 0 }}>
         <div
           style={{
@@ -419,8 +419,8 @@ function MessageBubble({ message }: { message: AssistantMessage }) {
   );
 }
 
-function Avatar({ role }: { role: 'user' | 'assistant' }) {
-  const isUser = role === 'user';
+function Avatar({ speaker }: { speaker: 'user' | 'assistant' }) {
+  const isUser = speaker === 'user';
   return (
     <div
       aria-hidden="true"

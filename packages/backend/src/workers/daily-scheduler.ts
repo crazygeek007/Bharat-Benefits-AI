@@ -13,10 +13,11 @@
  */
 
 import cron from 'node-cron';
+import type { ScheduledTask } from 'node-cron';
 import prisma from '../lib/prisma';
 
 let isStarted = false;
-const tasks: cron.ScheduledTask[] = [];
+const tasks: ScheduledTask[] = [];
 
 interface DailySchedulerLogger {
   info: (msg: string, ctx?: Record<string, unknown>) => void;

@@ -9,6 +9,7 @@
  */
 
 import 'dotenv/config';
+import type { PineconeRecord } from '@pinecone-database/pinecone';
 import prisma from '../lib/prisma';
 import { getPineconeClient } from '../lib/vectordb';
 import { createGeminiEmbeddingsClient } from '../lib/gemini';
@@ -66,11 +67,7 @@ async function main() {
       }
 
       // Generate embeddings and upsert to Pinecone
-      const records: Array<{
-        id: string;
-        values: number[];
-        metadata: Record<string, unknown>;
-      }> = [];
+      const records: PineconeRecord[] = [];
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];

@@ -10,9 +10,34 @@
 
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <main
+      id="main-content"
+      tabIndex={-1}
+      style={{
+        maxWidth: 400,
+        margin: '80px auto',
+        padding: 24,
+      }}
+    >
+      <h1 style={{ marginBottom: 8 }}>Sign In</h1>
+      <p style={{ color: '#57606a' }}>Loading sign-in form...</p>
+    </main>
+  );
+}
+
+function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
   const error = searchParams.get('error');

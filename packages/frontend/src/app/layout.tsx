@@ -74,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <SessionWrapper>
           <I18nProvider initialLocale={locale}>
+            <SkipLink />
             <SiteHeader />
             {children}
             <footer
