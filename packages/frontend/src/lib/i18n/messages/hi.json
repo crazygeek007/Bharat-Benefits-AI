@@ -1,0 +1,83 @@
+{
+  "$meta": {
+    "locale": "hi",
+    "name": "Hindi",
+    "nativeName": "हिन्दी"
+  },
+  "app": {
+    "title": "भारत बेनिफिट्स एआई",
+    "tagline": "सरकारी कल्याण योजनाओं को खोजें, समझें और आवेदन करें।"
+  },
+  "nav": {
+    "home": "होम",
+    "schemes": "योजनाएँ",
+    "compare": "तुलना",
+    "assistant": "सहायक",
+    "dashboard": "डैशबोर्ड",
+    "profile": "प्रोफ़ाइल",
+    "signIn": "साइन इन",
+    "signOut": "साइन आउट",
+    "openMenu": "मेनू खोलें",
+    "closeMenu": "मेनू बंद करें",
+    "primaryAriaLabel": "मुख्य",
+    "footerAriaLabel": "फ़ुटर नेविगेशन"
+  },
+  "languageSwitcher": {
+    "label": "भाषा",
+    "ariaLabel": "भाषा चुनें"
+  },
+  "scheme": {
+    "centralGovernment": "केंद्र सरकार",
+    "stateGovernment": "राज्य सरकार",
+    "applyNow": "अभी आवेदन करें",
+    "viewDetails": "विवरण देखें",
+    "save": "सहेजें",
+    "saved": "सहेजा गया",
+    "deadline": "अंतिम तिथि",
+    "noDeadline": "खुला / कोई अंतिम तिथि नहीं",
+    "lastVerified": "अंतिम बार सत्यापित",
+    "eligibility": "पात्रता",
+    "benefits": "लाभ",
+    "applicationSteps": "आवेदन कैसे करें",
+    "requiredDocuments": "आवश्यक दस्तावेज़"
+  },
+  "filters": {
+    "title": "योजनाएँ फ़िल्टर करें",
+    "state": "राज्य",
+    "incomeLevel": "आय (₹/वर्ष)",
+    "category": "श्रेणी",
+    "age": "आयु",
+    "gender": "लिंग",
+    "occupation": "व्यवसाय",
+    "benefitType": "लाभ प्रकार",
+    "any": "कोई भी",
+    "apply": "फ़िल्टर लागू करें",
+    "reset": "रीसेट"
+  },
+  "search": {
+    "placeholder": "योजनाएँ खोजें",
+    "minLengthHint": "कम से कम 2 अक्षर लिखें",
+    "noResults": "कोई योजना नहीं मिली"
+  },
+  "eligibility": {
+    "eligible": "पात्र",
+    "partiallyEligible": "आंशिक रूप से पात्र",
+    "notEligible": "पात्र नहीं",
+    "missingProfile": "पात्रता देखने के लिए अपना प्रोफ़ाइल पूरा करें"
+  },
+  "translation": {
+    "fallbackNotice": "कुछ सामग्री के लिए अनुवाद उपलब्ध नहीं है — अंग्रेज़ी संस्करण दिखाया जा रहा है।",
+    "outageNotice": "अनुवाद सेवा अस्थायी रूप से अनुपलब्ध है — अंग्रेज़ी सामग्री दिखाई जा रही है।"
+  },
+  "errors": {
+    "generic": "कुछ गलत हो गया। कृपया पुन: प्रयास करें।",
+    "loadFailed": "सामग्री लोड करने में विफल।"
+  },
+  "actions": {
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "back": "वापस",
+    "continue": "जारी रखें",
+    "skipToMain": "मुख्य सामग्री पर जाएँ"
+  }
+}

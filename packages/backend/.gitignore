@@ -1,0 +1,14 @@
+node_modules
+
+# Keep environment variables out of version control.
+# Allow only the .env.example template through.
+.env
+.env.*
+!.env.example
+
+# Generated Prisma client — regenerated via `prisma generate`.
+/src/generated/prisma
+
+# TypeScript build artefacts
+dist/
+*.tsbuildinfo

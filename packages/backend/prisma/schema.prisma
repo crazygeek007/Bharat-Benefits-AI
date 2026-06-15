@@ -1,0 +1,316 @@
+// Bharat Benefits AI - Database Schema
+// PostgreSQL with pgvector extension for embeddings
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector"), uuid_ossp(map: "uuid-ossp")]
+}
+
+model User {
+  id               String    @id @default(uuid()) @db.Uuid
+  email            String    @unique
+  passwordHash     String?   @map("password_hash")
+  authProvider     String    @default("email") @map("auth_provider")
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  // Coarse role used for the admin dashboard authorization (Req 17.6).
+  // Allowed values: "citizen" (default) and "admin".
+  role             String    @default("citizen")
+  lastLogin        DateTime? @map("last_login")
+  sessionExpiresAt DateTime? @map("session_expires_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  profile       UserProfile?
+  savedSchemes  SavedScheme[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@index([role], name: "idx_user_role")
+  @@map("users")
+}
+
+model UserProfile {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @map("user_id") @db.Uuid
+  age                Int?
+  gender             String?
+  state              String?
+  district           String?
+  incomeLevel        Decimal? @map("income_level") @db.Decimal(12, 2)
+  occupation         String?
+  educationLevel     String?  @map("education_level")
+  casteCategory      String?  @map("caste_category")
+  disabilityStatus   Boolean? @map("disability_status")
+  maritalStatus      String?  @map("marital_status")
+  dependents         Int?
+  languagePreference String?  @map("language_preference")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Scheme {
+  id                String    @id @default(uuid()) @db.Uuid
+  name              String
+  description       String    @db.Text
+  ministry          String
+  state             String?
+  category          String
+  sourceUrl         String    @map("source_url")
+  benefitType       String?   @map("benefit_type")
+  benefitAmount     Decimal?  @map("benefit_amount") @db.Decimal(14, 2)
+  deadline          DateTime? @db.Date
+  applicationMode   String?   @map("application_mode")
+  applicationUrl    String?   @map("application_url")
+  eligibilityCriteria Json?   @map("eligibility_criteria") @db.JsonB
+  applicationSteps  Json?     @map("application_steps") @db.JsonB
+  trustScore        Int       @default(0) @map("trust_score")
+  verified          Boolean   @default(false)
+  discoveredAt      DateTime  @default(now()) @map("discovered_at")
+  lastVerifiedAt    DateTime? @map("last_verified_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  versions        SchemeVersion[]
+  compatibility   SchemeCompatibility[] @relation("scheme_source")
+  relatedTo       SchemeCompatibility[] @relation("scheme_related")
+  savedBy         SavedScheme[]
+  documents       SchemeDocument[]
+  notifications   Notification[]
+  embeddings      SchemeEmbedding[]
+  flags           SchemeFlag[]
+
+  @@index([category], name: "idx_scheme_category")
+  @@index([state], name: "idx_scheme_state")
+  @@index([trustScore], name: "idx_scheme_trust_score")
+  @@index([verified], name: "idx_scheme_verified")
+  @@index([deadline], name: "idx_scheme_deadline")
+  @@map("schemes")
+}
+
+model SchemeVersion {
+  id               String   @id @default(uuid()) @db.Uuid
+  schemeId         String   @map("scheme_id") @db.Uuid
+  previousValues   Json?    @map("previous_values") @db.JsonB
+  newValues        Json?    @map("new_values") @db.JsonB
+  changedFields    String   @map("changed_fields")
+  sourceUrl        String?  @map("source_url")
+  changeDetectedAt DateTime @default(now()) @map("change_detected_at")
+  versionNumber    Int      @map("version_number")
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([schemeId, versionNumber], name: "idx_scheme_version_scheme_id")
+  @@map("scheme_versions")
+}
+
+model SchemeCompatibility {
+  id               String  @id @default(uuid()) @db.Uuid
+  schemeId         String  @map("scheme_id") @db.Uuid
+  relatedSchemeId  String  @map("related_scheme_id") @db.Uuid
+  relationshipType String  @map("relationship_type")
+  officialRule     String? @map("official_rule") @db.Text
+  sourceUrl        String? @map("source_url")
+  verified         Boolean @default(false)
+
+  scheme        Scheme @relation("scheme_source", fields: [schemeId], references: [id], onDelete: Cascade)
+  relatedScheme Scheme @relation("scheme_related", fields: [relatedSchemeId], references: [id], onDelete: Cascade)
+
+  @@unique([schemeId, relatedSchemeId], name: "uq_scheme_compatibility")
+  @@map("scheme_compatibility")
+}
+
+model SavedScheme {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  schemeId  String    @map("scheme_id") @db.Uuid
+  status    String    @default("saved")
+  savedAt   DateTime  @default(now()) @map("saved_at")
+  appliedAt DateTime? @map("applied_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, schemeId], name: "uq_user_saved_scheme")
+  @@index([userId], name: "idx_saved_scheme_user_id")
+  @@map("saved_schemes")
+}
+
+model SchemeDocument {
+  id           String  @id @default(uuid()) @db.Uuid
+  schemeId     String  @map("scheme_id") @db.Uuid
+  documentName String  @map("document_name")
+  description  String? @db.Text
+  format       String?
+  required     Boolean @default(true)
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([schemeId], name: "idx_scheme_document_scheme_id")
+  @@map("scheme_documents")
+}
+
+model Notification {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  schemeId    String?   @map("scheme_id") @db.Uuid
+  type        String
+  channel     String
+  status      String    @default("pending")
+  retryCount  Int       @default(0) @map("retry_count")
+  payload     Json?     @db.JsonB
+  sentAt      DateTime? @map("sent_at")
+  deliveredAt DateTime? @map("delivered_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheme Scheme? @relation(fields: [schemeId], references: [id], onDelete: SetNull)
+
+  @@index([userId], name: "idx_notification_user_id")
+  @@index([status], name: "idx_notification_status")
+  @@map("notifications")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  action        String
+  resourceType  String   @map("resource_type")
+  resourceId    String?  @map("resource_id") @db.Uuid
+  details       Json?    @db.JsonB
+  actorIdentity String?  @map("actor_identity")
+  timestamp     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId], name: "idx_audit_log_user_id")
+  @@index([resourceType, resourceId], name: "idx_audit_log_resource")
+  @@index([timestamp], name: "idx_audit_log_timestamp")
+  @@map("audit_logs")
+}
+
+model SchemeEmbedding {
+  id         String                    @id @default(uuid()) @db.Uuid
+  schemeId   String                    @map("scheme_id") @db.Uuid
+  chunkText  String                    @map("chunk_text") @db.Text
+  embedding  Unsupported("vector(768)")?
+  chunkIndex Int                       @map("chunk_index")
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([schemeId], name: "idx_scheme_embedding_scheme_id")
+  @@map("scheme_embeddings")
+}
+
+// AI observability — Scheme_Assistant query / response logs (Req 21.1, 21.5, 21.7).
+//
+// One row per answered query. Retention is enforced by the daily
+// retention sweep against `created_at` (Req 21.1 — minimum 90 days).
+model AssistantQueryLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  // Distributed-trace id propagated through every agent in the pipeline
+  // (Req 21.5). Indexed because admins look traces up by trace id.
+  traceId         String   @unique @map("trace_id")
+  sessionId       String   @map("session_id")
+  userId          String?  @map("user_id") @db.Uuid
+  query           String   @db.Text
+  response        String   @db.Text
+  // Top-K retrieved chunks (scheme id + text + similarity) stored verbatim
+  // so future evaluation runs can recompute precision / recall without
+  // re-querying the vector index (Req 21.2).
+  retrievedChunks Json     @map("retrieved_chunks") @db.JsonB
+  sources         Json     @db.JsonB
+  language        String
+  durationMs      Int      @map("duration_ms")
+  // True when durationMs > DEGRADED_TRACE_THRESHOLD_MS (Req 21.7).
+  degraded        Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  feedback AssistantResponseFeedback[]
+
+  // No `@@index([traceId])` — `@unique` above already creates an index on
+  // `trace_id` that satisfies the trace-id lookup query path. Adding a
+  // second non-unique index on the same column wastes disk and adds
+  // write amplification on every insert.
+  @@index([sessionId], name: "idx_assistant_query_log_session_id")
+  @@index([userId], name: "idx_assistant_query_log_user_id")
+  @@index([createdAt], name: "idx_assistant_query_log_created_at")
+  @@index([degraded], name: "idx_assistant_query_log_degraded")
+  @@map("assistant_query_logs")
+}
+
+// Citizen helpful / unhelpful ratings for Scheme_Assistant responses
+// (Req 21.3, 21.4). One row per (traceId, userId) pair — re-rating the
+// same response replaces the prior row.
+model AssistantResponseFeedback {
+  id        String   @id @default(uuid()) @db.Uuid
+  traceId   String   @map("trace_id")
+  userId    String?  @map("user_id") @db.Uuid
+  // 'helpful' | 'unhelpful'.
+  rating    String
+  comment   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+
+  queryLog AssistantQueryLog @relation(fields: [traceId], references: [traceId], onDelete: Cascade)
+
+  // Composite unique key — the FeedbackStore upserts on (trace_id, user_id).
+  @@unique([traceId, userId], name: "uq_assistant_response_feedback_trace_user")
+  @@index([traceId], name: "idx_assistant_response_feedback_trace_id")
+  @@index([userId], name: "idx_assistant_response_feedback_user_id")
+  @@index([createdAt], name: "idx_assistant_response_feedback_created_at")
+  @@index([rating], name: "idx_assistant_response_feedback_rating")
+  @@map("assistant_response_feedback")
+}
+
+// Weekly automated evaluation results (Req 21.6). One row per evaluation
+// run; per-case detail is kept inline in `results` so the admin
+// dashboard can render the full breakdown without a join.
+model EvaluationRun {
+  id                  String   @id @default(uuid()) @db.Uuid
+  startedAt           DateTime @map("started_at")
+  finishedAt          DateTime @map("finished_at")
+  totalCases          Int      @map("total_cases")
+  precision           Decimal  @db.Decimal(6, 4)
+  recall              Decimal  @db.Decimal(6, 4)
+  answerCorrectCount  Int      @map("answer_correct_count")
+  results             Json     @db.JsonB
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@index([startedAt], name: "idx_evaluation_run_started_at")
+  @@index([finishedAt], name: "idx_evaluation_run_finished_at")
+  @@map("evaluation_runs")
+}
+
+// Flagged schemes pending admin review (Req 17.3, 17.5, 17.6).
+//
+// Created by the Crawler_System or Change_Detector when a scheme needs
+// administrator attention (low trust score, mandatory field issues,
+// detected change requiring re-verification, etc.). Administrators
+// review each flag and either approve (mark verified, surface to
+// citizens) or reject (keep hidden, record reason).
+model SchemeFlag {
+  id             String    @id @default(uuid()) @db.Uuid
+  schemeId       String    @map("scheme_id") @db.Uuid
+  reason         String    @db.Text
+  // Origin of the flag — "crawler", "change_detector", or "admin".
+  flagSource     String    @map("flag_source")
+  sourceUrl      String?   @map("source_url")
+  // Lifecycle status — "pending", "approved", or "rejected".
+  status         String    @default("pending")
+  resolvedBy     String?   @map("resolved_by") @db.Uuid
+  resolvedAt     DateTime? @map("resolved_at")
+  resolutionNote String?   @map("resolution_note") @db.Text
+  flaggedAt      DateTime  @default(now()) @map("flagged_at")
+
+  scheme Scheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+
+  @@index([flaggedAt], name: "idx_scheme_flag_date")
+  @@index([status], name: "idx_scheme_flag_status")
+  @@index([schemeId], name: "idx_scheme_flag_scheme_id")
+  @@map("scheme_flags")
+}

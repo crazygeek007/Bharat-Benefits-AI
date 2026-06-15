@@ -1,0 +1,83 @@
+{
+  "$meta": {
+    "locale": "mr",
+    "name": "Marathi",
+    "nativeName": "मराठी"
+  },
+  "app": {
+    "title": "भारत बेनिफिट्स एआय",
+    "tagline": "सरकारी कल्याण योजना शोधा, समजून घ्या आणि अर्ज करा."
+  },
+  "nav": {
+    "home": "मुख्यपृष्ठ",
+    "schemes": "योजना",
+    "compare": "तुलना",
+    "assistant": "सहाय्यक",
+    "dashboard": "डॅशबोर्ड",
+    "profile": "प्रोफाइल",
+    "signIn": "साइन इन",
+    "signOut": "साइन आउट",
+    "openMenu": "मेनू उघडा",
+    "closeMenu": "मेनू बंद करा",
+    "primaryAriaLabel": "मुख्य",
+    "footerAriaLabel": "फूटर नॅव्हिगेशन"
+  },
+  "languageSwitcher": {
+    "label": "भाषा",
+    "ariaLabel": "भाषा निवडा"
+  },
+  "scheme": {
+    "centralGovernment": "केंद्र सरकार",
+    "stateGovernment": "राज्य सरकार",
+    "applyNow": "आत्ताच अर्ज करा",
+    "viewDetails": "तपशील पहा",
+    "save": "जतन करा",
+    "saved": "जतन केले",
+    "deadline": "अंतिम मुदत",
+    "noDeadline": "खुले / अंतिम मुदत नाही",
+    "lastVerified": "शेवटची पडताळणी",
+    "eligibility": "पात्रता",
+    "benefits": "फायदे",
+    "applicationSteps": "अर्ज कसा करावा",
+    "requiredDocuments": "आवश्यक कागदपत्रे"
+  },
+  "filters": {
+    "title": "योजना फिल्टर करा",
+    "state": "राज्य",
+    "incomeLevel": "उत्पन्न (₹/वर्ष)",
+    "category": "श्रेणी",
+    "age": "वय",
+    "gender": "लिंग",
+    "occupation": "व्यवसाय",
+    "benefitType": "फायदा प्रकार",
+    "any": "कोणतेही",
+    "apply": "फिल्टर लागू करा",
+    "reset": "रीसेट"
+  },
+  "search": {
+    "placeholder": "योजना शोधा",
+    "minLengthHint": "किमान 2 अक्षरे टाइप करा",
+    "noResults": "कोणत्याही योजना सापडल्या नाहीत"
+  },
+  "eligibility": {
+    "eligible": "पात्र",
+    "partiallyEligible": "अंशतः पात्र",
+    "notEligible": "पात्र नाही",
+    "missingProfile": "पात्रता पाहण्यासाठी आपले प्रोफाइल पूर्ण करा"
+  },
+  "translation": {
+    "fallbackNotice": "काही मजकुरासाठी भाषांतर उपलब्ध नाही — इंग्रजी आवृत्ती दर्शवली जात आहे.",
+    "outageNotice": "भाषांतर सेवा तात्पुरती उपलब्ध नाही — इंग्रजी मजकूर दर्शवला जात आहे."
+  },
+  "errors": {
+    "generic": "काहीतरी चूक झाली. कृपया पुन्हा प्रयत्न करा.",
+    "loadFailed": "मजकूर लोड करण्यात अयशस्वी."
+  },
+  "actions": {
+    "save": "जतन करा",
+    "cancel": "रद्द करा",
+    "back": "मागे",
+    "continue": "सुरू ठेवा",
+    "skipToMain": "मुख्य मजकुराकडे जा"
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "$meta": {
+    "locale": "bn",
+    "name": "Bengali",
+    "nativeName": "বাংলা"
+  },
+  "app": {
+    "title": "ভারত বেনিফিটস এআই",
+    "tagline": "সরকারি কল্যাণ প্রকল্প খুঁজুন, বুঝুন এবং আবেদন করুন।"
+  },
+  "nav": {
+    "home": "হোম",
+    "schemes": "প্রকল্পগুলি",
+    "compare": "তুলনা",
+    "assistant": "সহকারী",
+    "dashboard": "ড্যাশবোর্ড",
+    "profile": "প্রোফাইল",
+    "signIn": "সাইন ইন",
+    "signOut": "সাইন আউট",
+    "openMenu": "মেনু খুলুন",
+    "closeMenu": "মেনু বন্ধ করুন",
+    "primaryAriaLabel": "প্রধান",
+    "footerAriaLabel": "ফুটার নেভিগেশন"
+  },
+  "languageSwitcher": {
+    "label": "ভাষা",
+    "ariaLabel": "ভাষা নির্বাচন করুন"
+  },
+  "scheme": {
+    "centralGovernment": "কেন্দ্রীয় সরকার",
+    "stateGovernment": "রাজ্য সরকার",
+    "applyNow": "এখনই আবেদন করুন",
+    "viewDetails": "বিস্তারিত দেখুন",
+    "save": "সংরক্ষণ",
+    "saved": "সংরক্ষিত",
+    "deadline": "শেষ তারিখ",
+    "noDeadline": "উন্মুক্ত / কোনও শেষ তারিখ নেই",
+    "lastVerified": "শেষ যাচাই",
+    "eligibility": "যোগ্যতা",
+    "benefits": "সুবিধা",
+    "applicationSteps": "কীভাবে আবেদন করবেন",
+    "requiredDocuments": "প্রয়োজনীয় নথি"
+  },
+  "filters": {
+    "title": "প্রকল্প ফিল্টার করুন",
+    "state": "রাজ্য",
+    "incomeLevel": "আয় (₹/বছর)",
+    "category": "বিভাগ",
+    "age": "বয়স",
+    "gender": "লিঙ্গ",
+    "occupation": "পেশা",
+    "benefitType": "সুবিধার ধরন",
+    "any": "যেকোনো",
+    "apply": "ফিল্টার প্রয়োগ করুন",
+    "reset": "রিসেট"
+  },
+  "search": {
+    "placeholder": "প্রকল্প খুঁজুন",
+    "minLengthHint": "কমপক্ষে 2টি অক্ষর লিখুন",
+    "noResults": "কোনো প্রকল্প পাওয়া যায়নি"
+  },
+  "eligibility": {
+    "eligible": "যোগ্য",
+    "partiallyEligible": "আংশিকভাবে যোগ্য",
+    "notEligible": "যোগ্য নয়",
+    "missingProfile": "যোগ্যতা দেখতে আপনার প্রোফাইল সম্পূর্ণ করুন"
+  },
+  "translation": {
+    "fallbackNotice": "কিছু বিষয়বস্তুর জন্য অনুবাদ উপলব্ধ নেই — ইংরেজি সংস্করণ দেখানো হচ্ছে।",
+    "outageNotice": "অনুবাদ পরিষেবা সাময়িকভাবে অনুপলব্ধ — ইংরেজি বিষয়বস্তু দেখানো হচ্ছে।"
+  },
+  "errors": {
+    "generic": "কিছু ভুল হয়েছে। অনুগ্রহ করে পুনরায় চেষ্টা করুন।",
+    "loadFailed": "বিষয়বস্তু লোড করতে ব্যর্থ।"
+  },
+  "actions": {
+    "save": "সংরক্ষণ",
+    "cancel": "বাতিল",
+    "back": "পেছনে",
+    "continue": "চালিয়ে যান",
+    "skipToMain": "মূল বিষয়বস্তুতে যান"
+  }
+}

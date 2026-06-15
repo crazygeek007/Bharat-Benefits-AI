@@ -1,0 +1,83 @@
+{
+  "$meta": {
+    "locale": "te",
+    "name": "Telugu",
+    "nativeName": "తెలుగు"
+  },
+  "app": {
+    "title": "భారత్ బెనిఫిట్స్ ఏఐ",
+    "tagline": "ప్రభుత్వ సంక్షేమ పథకాలను కనుగొనండి, అర్థం చేసుకోండి మరియు దరఖాస్తు చేసుకోండి."
+  },
+  "nav": {
+    "home": "హోమ్",
+    "schemes": "పథకాలు",
+    "compare": "పోల్చండి",
+    "assistant": "సహాయకుడు",
+    "dashboard": "డాష్‌బోర్డ్",
+    "profile": "ప్రొఫైల్",
+    "signIn": "సైన్ ఇన్",
+    "signOut": "సైన్ అవుట్",
+    "openMenu": "మెను తెరవండి",
+    "closeMenu": "మెను మూసివేయండి",
+    "primaryAriaLabel": "ప్రధాన",
+    "footerAriaLabel": "ఫుటర్ నావిగేషన్"
+  },
+  "languageSwitcher": {
+    "label": "భాష",
+    "ariaLabel": "భాషను ఎంచుకోండి"
+  },
+  "scheme": {
+    "centralGovernment": "కేంద్ర ప్రభుత్వం",
+    "stateGovernment": "రాష్ట్ర ప్రభుత్వం",
+    "applyNow": "ఇప్పుడు దరఖాస్తు చేసుకోండి",
+    "viewDetails": "వివరాలు చూడండి",
+    "save": "సేవ్",
+    "saved": "సేవ్ చేయబడింది",
+    "deadline": "గడువు",
+    "noDeadline": "ఓపెన్ / గడువు లేదు",
+    "lastVerified": "చివరిసారి ధృవీకరించబడింది",
+    "eligibility": "అర్హత",
+    "benefits": "ప్రయోజనాలు",
+    "applicationSteps": "ఎలా దరఖాస్తు చేయాలి",
+    "requiredDocuments": "అవసరమైన పత్రాలు"
+  },
+  "filters": {
+    "title": "పథకాలను ఫిల్టర్ చేయండి",
+    "state": "రాష్ట్రం",
+    "incomeLevel": "ఆదాయం (₹/సంవత్సరం)",
+    "category": "వర్గం",
+    "age": "వయస్సు",
+    "gender": "లింగం",
+    "occupation": "వృత్తి",
+    "benefitType": "ప్రయోజన రకం",
+    "any": "ఏదైనా",
+    "apply": "ఫిల్టర్‌లను వర్తింపజేయి",
+    "reset": "రీసెట్"
+  },
+  "search": {
+    "placeholder": "పథకాలను శోధించండి",
+    "minLengthHint": "కనీసం 2 అక్షరాలు టైప్ చేయండి",
+    "noResults": "పథకాలు ఏవీ కనుగొనబడలేదు"
+  },
+  "eligibility": {
+    "eligible": "అర్హులు",
+    "partiallyEligible": "పాక్షికంగా అర్హులు",
+    "notEligible": "అర్హులు కారు",
+    "missingProfile": "అర్హతను చూడటానికి మీ ప్రొఫైల్‌ను పూర్తి చేయండి"
+  },
+  "translation": {
+    "fallbackNotice": "కొన్ని కంటెంట్‌కు అనువాదం అందుబాటులో లేదు — ఆంగ్ల వెర్షన్ చూపుతోంది.",
+    "outageNotice": "అనువాద సేవ తాత్కాలికంగా అందుబాటులో లేదు — ఆంగ్ల కంటెంట్ చూపుతోంది."
+  },
+  "errors": {
+    "generic": "ఏదో తప్పు జరిగింది. దయచేసి మళ్లీ ప్రయత్నించండి.",
+    "loadFailed": "కంటెంట్ లోడ్ చేయడంలో విఫలమైంది."
+  },
+  "actions": {
+    "save": "సేవ్",
+    "cancel": "రద్దు",
+    "back": "వెనుకకు",
+    "continue": "కొనసాగించు",
+    "skipToMain": "ప్రధాన కంటెంట్‌కి దాటవేయి"
+  }
+}

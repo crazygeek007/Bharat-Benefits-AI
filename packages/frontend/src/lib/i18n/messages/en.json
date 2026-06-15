@@ -1,0 +1,83 @@
+{
+  "$meta": {
+    "locale": "en",
+    "name": "English",
+    "nativeName": "English"
+  },
+  "app": {
+    "title": "Bharat Benefits AI",
+    "tagline": "Discover, understand, and apply for government welfare schemes."
+  },
+  "nav": {
+    "home": "Home",
+    "schemes": "Schemes",
+    "compare": "Compare",
+    "assistant": "Assistant",
+    "dashboard": "Dashboard",
+    "profile": "Profile",
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "primaryAriaLabel": "Primary",
+    "footerAriaLabel": "Footer navigation"
+  },
+  "languageSwitcher": {
+    "label": "Language",
+    "ariaLabel": "Select language"
+  },
+  "scheme": {
+    "centralGovernment": "Central Government",
+    "stateGovernment": "State Government",
+    "applyNow": "Apply now",
+    "viewDetails": "View details",
+    "save": "Save",
+    "saved": "Saved",
+    "deadline": "Deadline",
+    "noDeadline": "Open / No deadline",
+    "lastVerified": "Last verified",
+    "eligibility": "Eligibility",
+    "benefits": "Benefits",
+    "applicationSteps": "How to apply",
+    "requiredDocuments": "Required documents"
+  },
+  "filters": {
+    "title": "Filter schemes",
+    "state": "State",
+    "incomeLevel": "Income (₹/year)",
+    "category": "Category",
+    "age": "Age",
+    "gender": "Gender",
+    "occupation": "Occupation",
+    "benefitType": "Benefit type",
+    "any": "Any",
+    "apply": "Apply filters",
+    "reset": "Reset"
+  },
+  "search": {
+    "placeholder": "Search schemes",
+    "minLengthHint": "Type at least 2 characters",
+    "noResults": "No schemes found"
+  },
+  "eligibility": {
+    "eligible": "Eligible",
+    "partiallyEligible": "Partially eligible",
+    "notEligible": "Not eligible",
+    "missingProfile": "Complete your profile to see eligibility"
+  },
+  "translation": {
+    "fallbackNotice": "Translation unavailable for some content — showing English version.",
+    "outageNotice": "Translation service is temporarily unavailable — showing English content."
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "loadFailed": "Failed to load content."
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "back": "Back",
+    "continue": "Continue",
+    "skipToMain": "Skip to main content"
+  }
+}
