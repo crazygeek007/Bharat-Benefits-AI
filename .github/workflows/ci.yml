@@ -51,6 +51,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Build shared package
+        # Backend and frontend reference `../shared` as a TypeScript project
+        # reference, so its `dist/*.d.ts` must exist before either can
+        # typecheck on a fresh CI runner. Without this step `tsc -p`
+        # against the consumers fails with TS6305 ("output file has not
+        # been built from source").
+        run: npm run build --workspace=packages/shared
+
       - name: Typecheck (backend)
         run: npx tsc -p packages/backend --noEmit
 
