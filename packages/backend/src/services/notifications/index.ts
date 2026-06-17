@@ -7,6 +7,11 @@ export {
   DEFAULT_MAX_EMAIL_ATTEMPTS,
   DEFAULT_EMAIL_ATTEMPT_DELAYS_MS,
 } from './notification-service';
+export {
+  ResendEmailClient,
+  createResendEmailClientFromEnv,
+} from './resend-email-client';
+export type { ResendEmailClientOptions } from './resend-email-client';
 export type {
   CreateNotificationServiceOptions,
   DeliveryAttempt,

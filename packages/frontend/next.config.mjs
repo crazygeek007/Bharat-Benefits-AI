@@ -4,6 +4,31 @@ const nextConfig = {
   transpilePackages: ['@bharat-benefits/shared'],
 
   /**
+   * Skip ESLint during `next build`. We already lint the whole repo in
+   * CI via `npm run lint` (see .github/workflows/ci.yml). Re-running it
+   * during the Next production build duplicates work AND requires
+   * `eslint` to be a direct dep of the frontend workspace — which it
+   * isn't, because lint config + plugins live at the repo root. Leaving
+   * the default enabled makes Vercel's per-package install fail with
+   * "ESLint must be installed in order to run during builds".
+   */
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
+  /**
+   * Skip TypeScript errors during `next build` for the same reason:
+   * the repo's typecheck step runs in CI against the workspace
+   * tsconfig (see CI's `npx tsc -p packages/frontend --noEmit`), and
+   * Vercel's per-workspace install may not pull in every devDep
+   * needed for Next's in-build typecheck. CI remains the source of
+   * truth for type safety; a typecheck regression there blocks merge.
+   */
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
+  /**
    * Performance optimizations for Requirement 19.5:
    * - FCP ≤ 3s on simulated 4G (9 Mbps downlink, 170ms RTT)
    * - Lighthouse mobile performance score ≥ 80

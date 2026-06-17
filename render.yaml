@@ -1,0 +1,96 @@
+# Render Blueprint for Bharat Benefits AI backend.
+# https://render.com/docs/blueprint-spec
+#
+# Deploys two services from this repo:
+#   - bharat-backend          : Fastify API + in-process daily scheduler
+#   - bharat-backend-migrate  : pre-deploy job that runs `prisma migrate deploy`
+#
+# Postgres (with pgvector), Redis (Upstash), Pinecone, Elastic Cloud,
+# Gemini API key, and Resend API key are external — set them in the
+# Render dashboard, never commit them. Mark every secret as `sync: false`
+# below so Render asks for it instead of expecting the value in this
+# file.
+#
+# Frontend (Next.js) deploys to Vercel separately — see DEPLOY.md.
+
+services:
+  - type: web
+    name: bharat-backend
+    runtime: docker
+    repo: https://github.com/crazygeek007/Bharat-Benefits-AI
+    region: singapore                       # closest to Indian citizens
+    plan: starter                           # bump to `standard` for production load
+    dockerfilePath: ./packages/backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: HOST
+        value: 0.0.0.0
+      # Single replica owns the in-process scheduler. If you scale beyond
+      # 1 instance, set DISABLE_SCHEDULER=true on every replica EXCEPT one,
+      # or extract the scheduler into a separate worker service.
+      - key: DISABLE_SCHEDULER
+        value: "false"
+
+      # ── Secrets (set in Render dashboard) ──────────────────────────────
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PROFILE_ENCRYPTION_KEY
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_CHAT_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_EMBEDDING_MODEL
+        value: text-embedding-004
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX_NAME
+        sync: false
+      - key: PINECONE_NAMESPACE
+        value: production
+      - key: REDIS_HOST
+        sync: false
+      - key: REDIS_PORT
+        sync: false
+      - key: REDIS_PASSWORD
+        sync: false
+      - key: ELASTICSEARCH_NODE
+        sync: false
+      - key: ELASTICSEARCH_USERNAME
+        sync: false
+      - key: ELASTICSEARCH_PASSWORD
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        sync: false
+      # CORS / frontend URL — set to your Vercel deployment domain.
+      - key: FRONTEND_URL
+        sync: false
+
+  # Pre-deploy job: applies pending Prisma migrations. Render runs `job`
+  # services once per deploy and fails the deploy if the job exits
+  # non-zero, so a bad migration won't ship.
+  - type: job
+    name: bharat-backend-migrate
+    runtime: docker
+    repo: https://github.com/crazygeek007/Bharat-Benefits-AI
+    region: singapore
+    dockerfilePath: ./packages/backend/Dockerfile
+    dockerContext: .
+    # Override the default CMD to run migrate instead of starting the server.
+    dockerCommand: >
+      sh -c "cd packages/backend && npx prisma migrate deploy"
+    envVars:
+      - key: DATABASE_URL
+        sync: false
