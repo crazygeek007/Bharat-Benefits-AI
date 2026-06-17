@@ -6,7 +6,13 @@
     "baseUrl": ".",
     "paths": {
       "@shared/*": ["./src/*"]
-    }
+    },
+    // Emit CommonJS so the backend (which runs as plain Node, no
+    // bundler) can require this package at runtime. The base tsconfig's
+    // ESM + bundler setting is intended for the Next.js frontend; this
+    // override localises the choice to where it matters.
+    "module": "commonjs",
+    "moduleResolution": "node"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
