@@ -7,7 +7,14 @@
     "paths": {
       "@backend/*": ["./src/*"],
       "@shared/*": ["../shared/src/*"]
-    }
+    },
+    // The base tsconfig sets module: ESNext + moduleResolution: bundler
+    // because the frontend uses Next.js's bundler. The backend runs as plain
+    // Node on compiled output — no bundler — so it needs CommonJS. ESM
+    // output would emit extension-less `import './app'` statements and
+    // Node 20 refuses them at runtime with ERR_MODULE_NOT_FOUND.
+    "module": "commonjs",
+    "moduleResolution": "node"
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"],
