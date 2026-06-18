@@ -64,12 +64,10 @@ services:
         sync: false
       - key: REDIS_PASSWORD
         sync: false
-      - key: ELASTICSEARCH_NODE
-        sync: false
-      - key: ELASTICSEARCH_USERNAME
-        sync: false
-      - key: ELASTICSEARCH_PASSWORD
-        sync: false
+      # Elasticsearch is intentionally omitted — keyword search runs on
+      # Postgres FTS via the `schemes.search_doc` tsvector column. If you
+      # ever re-enable ES, add ELASTICSEARCH_NODE / USERNAME / PASSWORD
+      # here and the readiness probe + crawler indexer pick it back up.
       - key: RESEND_API_KEY
         sync: false
       - key: RESEND_FROM

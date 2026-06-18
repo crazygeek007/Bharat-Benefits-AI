@@ -180,13 +180,21 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     '/readyz',
     { config: { rateLimit: false } as Record<string, unknown> },
     async (_request, reply) => {
+      // Elasticsearch is OPTIONAL — Postgres FTS replaces it for keyword
+      // search (see services/scheme-search/postgres-searcher.ts). Only
+      // probe ES when it's actually configured; otherwise the absence is
+      // a healthy state, not a failure.
+      const elasticsearchConfigured = !!process.env.ELASTICSEARCH_NODE;
+
       // Lazy-import the health checks so test builds without these
       // dependencies don't pay the cost of loading the clients.
-      const [{ checkRedisHealth }, { checkVectorDBHealth }, { checkElasticsearchHealth }] =
+      const [{ checkRedisHealth }, { checkVectorDBHealth }, esModule] =
         await Promise.all([
           import('./lib/redis'),
           import('./lib/vectordb'),
-          import('./lib/elasticsearch'),
+          elasticsearchConfigured
+            ? import('./lib/elasticsearch')
+            : Promise.resolve(null),
         ]);
       const { default: prisma } = await import('./lib/prisma');
 
@@ -212,6 +220,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         }
       };
 
+      const esCheckPromise: Promise<unknown> = esModule
+        ? withTimeout(esModule.checkElasticsearchHealth(), 'elasticsearch')
+        : Promise.resolve({ healthy: true, disabled: true });
+
       const [db, redis, vectordb, elasticsearch] = await Promise.all([
         withTimeout(prisma.$queryRaw`SELECT 1`, 'postgres')
           .then(() => ({ healthy: true }))
@@ -221,7 +233,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           })),
         withTimeout(checkRedisHealth(), 'redis'),
         withTimeout(checkVectorDBHealth(), 'pinecone'),
-        withTimeout(checkElasticsearchHealth(), 'elasticsearch'),
+        esCheckPromise,
       ]);
 
       const ready =

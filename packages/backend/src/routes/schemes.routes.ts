@@ -44,6 +44,7 @@ import {
   searchSchemes,
   type ElasticsearchSearcher,
 } from '../services/scheme-search/scheme-search';
+import { createPostgresSearcher } from '../services/scheme-search/postgres-searcher';
 import type { VectorSearcher } from '../services/scheme-search/vector-searcher';
 import { compatibilityEngine } from '../services/compatibility';
 import { eligibilityEngine } from '../services/eligibility';
@@ -150,7 +151,13 @@ export interface RegisterSchemesRoutesOptions {
   loadRelationships?: RelationshipLoader;
   /** Override the eligibility resolver — useful for tests. */
   computeEligibility?: EligibilityResolver;
-  /** Optional Elasticsearch searcher injected into the search route. */
+  /**
+   * Keyword searcher injected into the hybrid search route. Defaults to a
+   * Postgres FTS-backed searcher (`createPostgresSearcher`). The interface
+   * name is historical — it described the original Elasticsearch impl —
+   * but the contract is provider-agnostic. Pass an explicit `null` to
+   * disable keyword retrieval entirely (semantic + in-memory only).
+   */
   esSearcher?: ElasticsearchSearcher | null;
   /** Optional vector searcher injected into the search route. */
   vectorSearcher?: VectorSearcher | null;
@@ -375,6 +382,29 @@ async function defaultRelationshipLoader(
 }
 
 /**
+ * Lazily constructs the production keyword searcher backed by Postgres FTS
+ * over the `schemes.search_doc` generated column. Keeps Prisma out of the
+ * test path — tests that supply their own `esSearcher` (or explicit `null`)
+ * never construct this and never touch the DB.
+ *
+ * The proxy creates the real searcher on first call so registration time
+ * stays synchronous and importing the route module does not open a DB
+ * connection.
+ */
+function buildDefaultPostgresSearcher(): ElasticsearchSearcher {
+  let real: ElasticsearchSearcher | null = null;
+  return {
+    async searchSchemeIndex(query, limit) {
+      if (!real) {
+        const { default: prisma } = await import('../lib/prisma');
+        real = createPostgresSearcher(prisma);
+      }
+      return real.searchSchemeIndex(query, limit);
+    },
+  };
+}
+
+/**
  * Default eligibility resolver. Loads the citizen's profile and runs the
  * shared `eligibilityEngine` against the supplied scheme. Returns `null`
  * when the citizen has no profile yet so the UI can prompt them to fill in
@@ -491,7 +521,14 @@ export function registerSchemesRoutes(
     options.loadRelationships ?? defaultRelationshipLoader;
   const eligibilityResolver: EligibilityResolver =
     options.computeEligibility ?? defaultEligibilityResolver;
-  const esSearcher = options.esSearcher ?? null;
+  // Default keyword searcher is Postgres FTS over the `schemes.search_doc`
+  // generated tsvector column (see 20260618000000_scheme_fts_tsvector).
+  // Use a lazy proxy so test builds that don't go through registration
+  // (or that pass an explicit null) don't pay the cost of loading Prisma.
+  const esSearcher: ElasticsearchSearcher | null =
+    options.esSearcher === null
+      ? null
+      : options.esSearcher ?? buildDefaultPostgresSearcher();
   const vectorSearcher = options.vectorSearcher ?? null;
   const resolveUserIdForComparison: (
     request: FastifyRequest,

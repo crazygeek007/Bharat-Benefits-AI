@@ -76,6 +76,12 @@ model Scheme {
   discoveredAt      DateTime  @default(now()) @map("discovered_at")
   lastVerifiedAt    DateTime? @map("last_verified_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+  // Postgres FTS document — a `STORED` generated column populated by the
+  // 20260618000000_scheme_fts_tsvector migration. Prisma cannot model
+  // `tsvector` or `GENERATED` directly, so this is declared `Unsupported`
+  // purely to keep schema-vs-migration drift checks happy. Reads/writes
+  // go through raw SQL in services/scheme-search/postgres-searcher.ts.
+  searchDoc         Unsupported("tsvector")? @map("search_doc")
 
   versions        SchemeVersion[]
   compatibility   SchemeCompatibility[] @relation("scheme_source")

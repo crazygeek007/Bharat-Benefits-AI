@@ -73,7 +73,7 @@ The Scheme Assistant (`services/assistant/scheme-assistant.ts`) is a simpler RAG
 
 ### Data flow
 
-- **Crawler** (`services/crawler/`): orchestrator runs daily, parsers (HTML/PDF/JSON/XML) extract `SchemeObject`, source-validator rejects anything not on `gov.in`/`nic.in`/configured ministry portals, trust-score gates visibility (< 60 ⇒ hidden). New schemes flow to Postgres → vector DB (Pinecone, 768-dim Gemini embeddings, mirrored in pgvector) → Elasticsearch → change detector.
+- **Crawler** (`services/crawler/`): orchestrator runs daily, parsers (HTML/PDF/JSON/XML) extract `SchemeObject`, source-validator rejects anything not on `gov.in`/`nic.in`/configured ministry portals, trust-score gates visibility (< 60 ⇒ hidden). New schemes flow to Postgres → vector DB (Pinecone, 768-dim Gemini embeddings, mirrored in pgvector) → change detector. Keyword search is served by Postgres FTS (`schemes.search_doc` generated tsvector + GIN index) — Elasticsearch is OPTIONAL and only engages when `ELASTICSEARCH_NODE` is set.
 - **Eligibility & Recommendation** are recalculated when a profile changes (wired in `services/integration/profile-update-integration.ts`). The 30 s / 60 s recalc budgets are real SLOs traced to Req 3.3, 5.5.
 - **Daily scheduler** (`workers/daily-scheduler.ts`) runs in-process by default — verification at 02:00 IST, deadline scan every 30 min. Set `DISABLE_SCHEDULER=true` when running multiple backend replicas so only one host owns the cron.
 

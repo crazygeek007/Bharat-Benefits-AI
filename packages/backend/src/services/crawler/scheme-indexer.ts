@@ -1,8 +1,14 @@
 /**
  * Scheme Indexer — generates embeddings for scheme content, upserts them
  * into the Pinecone vector index, persists `SchemeEmbedding` rows in
- * Postgres, and indexes the scheme document into Elasticsearch for
- * full-text search.
+ * Postgres, and (optionally) indexes the scheme document into
+ * Elasticsearch for full-text search.
+ *
+ * Elasticsearch is OPTIONAL — Postgres FTS over the `schemes.search_doc`
+ * generated tsvector column (see migration 20260618000000) covers keyword
+ * search out of the box without any indexer-side work. When the ES env
+ * vars are unset the indexer skips ES operations silently. Tests that
+ * inject a stub `esClient` continue to exercise the call paths.
  *
  * Validates: Requirements 6.1, 2.6
  */
@@ -154,10 +160,15 @@ export function createSchemeIndexer(deps: SchemeIndexerDeps = {}): SchemeIndexer
     return base;
   }
 
-  function getEsClient(): ElasticsearchLikeClient {
-    return (
-      deps.esClient ?? (getElasticsearchClient() as unknown as ElasticsearchLikeClient)
-    );
+  function getEsClient(): ElasticsearchLikeClient | null {
+    if (deps.esClient) return deps.esClient;
+    // When ELASTICSEARCH_NODE isn't configured, we treat the ES indexer as
+    // disabled. Postgres FTS handles keyword search via the schemes table's
+    // generated `search_doc` column — no indexer-side work needed for that.
+    // Tests that pass an explicit `deps.esClient` still exercise the
+    // happy-path code below.
+    if (!process.env.ELASTICSEARCH_NODE) return null;
+    return getElasticsearchClient() as unknown as ElasticsearchLikeClient;
   }
 
   function getDb(): SchemeEmbeddingPersister {
@@ -207,8 +218,12 @@ export function createSchemeIndexer(deps: SchemeIndexerDeps = {}): SchemeIndexer
 
     async indexSchemeInElasticsearch(schemeId, scheme) {
       assertSchemeId(schemeId);
+      const client = getEsClient();
+      // No client configured ⇒ ES disabled. Postgres FTS already indexes
+      // the scheme via the `search_doc` generated column at write time.
+      if (!client) return;
       const document = buildSearchDocument(schemeId, scheme);
-      await getEsClient().index({
+      await client.index({
         index: schemesIndex,
         id: schemeId,
         document,
@@ -247,8 +262,12 @@ export function createSchemeIndexer(deps: SchemeIndexerDeps = {}): SchemeIndexer
 
       await db.schemeEmbedding.deleteMany({ where: { schemeId } });
 
+      const client = getEsClient();
+      // ES disabled ⇒ nothing to remove from the keyword index. Postgres
+      // FTS handles deletion automatically when the scheme row is removed.
+      if (!client) return;
       try {
-        await getEsClient().delete({ index: schemesIndex, id: schemeId });
+        await client.delete({ index: schemesIndex, id: schemeId });
       } catch (error) {
         // Ignore 404s when the document was never indexed; rethrow others.
         if (!isNotFoundError(error)) {
