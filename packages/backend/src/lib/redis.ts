@@ -31,6 +31,16 @@ let redisClient: Redis | null = null;
 export function getRedisClient(): Redis {
   if (!redisClient) {
     const config = getRedisConfig();
+    // Managed Redis providers (Upstash, ElastiCache TLS endpoints, etc.)
+    // require TLS on the connection. We auto-enable it whenever
+    // `REDIS_TLS=true` is set OR the host looks like an Upstash endpoint
+    // (`*.upstash.io`). Self-hosted dev Redis on `localhost` stays plain
+    // TCP. The opt-in env var lets callers force-disable detection if
+    // their managed provider serves TLS on a non-Upstash hostname.
+    const useTls =
+      process.env.REDIS_TLS === 'true' ||
+      (process.env.REDIS_TLS !== 'false' && config.host.endsWith('.upstash.io'));
+
     redisClient = new Redis({
       host: config.host,
       port: config.port,
@@ -40,6 +50,10 @@ export function getRedisClient(): Redis {
       maxRetriesPerRequest: config.maxRetriesPerRequest,
       connectTimeout: config.connectTimeout,
       lazyConnect: true,
+      // Empty TLS options ⇒ defaults (verify cert, SNI from host). Upstash
+      // serves a real cert so no `rejectUnauthorized: false` workaround
+      // is needed — leaving the default keeps the connection authentic.
+      ...(useTls ? { tls: {} } : {}),
     });
   }
   return redisClient;
