@@ -40,7 +40,7 @@ import type { NextAuthOptions, User as NextAuthUser } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
-import { SESSION_TIMEOUT_MINUTES, validatePassword } from '@bharat-benefits/shared';
+import { SESSION_TIMEOUT_MINUTES } from '@bharat-benefits/shared';
 
 /** Backend base URL — defaults to local dev port 4000. */
 const BACKEND_URL = process.env.BACKEND_URL ?? 'http://localhost:4000';
@@ -57,21 +57,60 @@ interface BackendAuthResult {
   expiresInSeconds: number;
 }
 
+interface BackendErrorBody {
+  error?: string;
+  message?: string;
+  retryAfterSeconds?: number;
+}
+
+/**
+ * Stable error codes surfaced to the login page via NextAuth's
+ * `?error=<code>` redirect param. The login page maps these to friendly
+ * messages. New codes added here MUST also be handled in `app/login/page.tsx`'s
+ * error message lookup so users don't see a raw token.
+ *
+ * The numeric portion of `AccountLocked:<seconds>` is parsed back out by
+ * the login page to render a countdown; everything else is a plain code.
+ */
+export const AUTH_ERROR_CODES = {
+  invalidCredentials: 'InvalidCredentials',
+  accountLocked: 'AccountLocked',
+  weakPassword: 'WeakPassword',
+  networkError: 'NetworkError',
+} as const;
+
 /**
  * Calls the backend `/auth/login` endpoint to authenticate credentials.
- * Returns the user object on success, or null on any failure.
+ *
+ * Returns the NextAuth user on success. On failure THROWS an Error whose
+ * message is a stable error code — NextAuth catches this and forwards
+ * the message as `?error=<code>` so the login page can render a specific
+ * message per cause (Req 16.8 lockout + general UX).
+ *
+ * Why throw instead of return null? NextAuth's `authorize()` contract
+ * collapses `return null` into a single opaque `CredentialsSignin`
+ * error. Throwing lets us carry the backend's actual reason (locked,
+ * weak password, invalid creds) all the way to the login form, which is
+ * what the user needs to see to recover.
  */
 async function authenticateAgainstBackend(
   email: string,
   password: string,
-): Promise<NextAuthUser | null> {
+): Promise<NextAuthUser> {
+  let res: Response;
   try {
-    const res = await fetch(`${BACKEND_URL}/auth/login`, {
+    res = await fetch(`${BACKEND_URL}/auth/login`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
-    if (!res.ok) return null;
+  } catch {
+    // Network-level failure (DNS, TLS, backend down). Distinct from
+    // 4xx/5xx so the login page can suggest a retry rather than a fix.
+    throw new Error(AUTH_ERROR_CODES.networkError);
+  }
+
+  if (res.ok) {
     const data = (await res.json()) as BackendAuthResult;
     return {
       id: data.user.id,
@@ -80,9 +119,28 @@ async function authenticateAgainstBackend(
       // NextAuth allows extra fields on User; they propagate to `jwt` callback.
       ...({ backendToken: data.token } as Record<string, unknown>),
     };
-  } catch {
-    return null;
   }
+
+  // Parse the structured error envelope set by routes/auth.routes.ts.
+  // Be defensive: a misbehaving proxy or 5xx without JSON should still
+  // surface a sensible code rather than crash the auth flow.
+  const body: BackendErrorBody = await res.json().catch(() => ({}));
+
+  if (body.error === 'AccountLocked') {
+    const seconds = typeof body.retryAfterSeconds === 'number' ? body.retryAfterSeconds : 0;
+    // Pack the retry-after into the code so the login page can render a
+    // countdown without a second round trip. NextAuth treats the whole
+    // string as opaque, so the colon is safe.
+    throw new Error(`${AUTH_ERROR_CODES.accountLocked}:${seconds}`);
+  }
+  if (body.error === 'WeakPassword') {
+    throw new Error(AUTH_ERROR_CODES.weakPassword);
+  }
+  // Default — covers InvalidCredentials (401), BadRequest (400), and any
+  // unmapped 4xx. Returning the generic code rather than leaking the raw
+  // backend error matches the security guidance to never disclose
+  // whether an email exists.
+  throw new Error(AUTH_ERROR_CODES.invalidCredentials);
 }
 
 /** Builds the providers list. Google is included only when configured. */
@@ -95,11 +153,15 @@ function buildProviders(): NextAuthOptions['providers'] {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(creds) {
-        if (!creds?.email || !creds?.password) return null;
-        // Fast client-side rejection for clearly weak passwords keeps obviously
-        // bad inputs from hitting the backend; the backend remains the source
-        // of truth on policy.
-        if (!validatePassword(creds.password).valid) return null;
+        if (!creds?.email || !creds?.password) {
+          throw new Error(AUTH_ERROR_CODES.invalidCredentials);
+        }
+        // Don't pre-validate the password here: an existing user whose
+        // password was set under an older policy would be locked out of
+        // their own account if we did. The backend is the policy source
+        // of truth (Req 16.2) — if it accepted the password at registration
+        // it must accept it at sign-in. Auth errors from the backend
+        // bubble up as typed codes via authenticateAgainstBackend.
         return authenticateAgainstBackend(creds.email, creds.password);
       },
     }),

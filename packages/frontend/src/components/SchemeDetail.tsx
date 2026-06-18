@@ -22,6 +22,7 @@ import type {
   EligibilityCriterion,
 } from '@bharat-benefits/shared';
 import type { SchemeDetailWithLevel } from '../lib/api';
+import { formatINR } from '../lib/formatCurrency';
 
 export interface SchemeDetailProps {
   scheme: SchemeDetailWithLevel;
@@ -41,11 +42,7 @@ function formatDate(iso: string): string {
 
 function formatBenefitAmount(amount: number | null): string {
   if (amount === null || !Number.isFinite(amount)) return '';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return formatINR(amount);
 }
 
 function CriteriaSection({ criteria }: { criteria: EligibilityCriterion[] }) {

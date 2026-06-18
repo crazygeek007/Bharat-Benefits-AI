@@ -1,9 +1,22 @@
 /**
- * Login page — renders the NextAuth.js credential form.
+ * Login page — credentials form rendered inside the split-screen AuthLayout.
  *
- * For the MVP, this provides a simple email/password login form that
- * calls NextAuth's credential provider. Social login buttons are shown
- * when GOOGLE_CLIENT_ID is configured.
+ * Handles four distinct error states surfaced via NextAuth's `?error=<code>`
+ * redirect param (see `lib/auth.ts` → `authenticateAgainstBackend`):
+ *
+ *   - `InvalidCredentials` — wrong email/password OR missing fields.
+ *     Intentionally indistinguishable from "no such account" so we never
+ *     leak which emails are registered.
+ *   - `AccountLocked:<seconds>` — Req 16.8 lockout. Shows a countdown so
+ *     the citizen knows when they can retry.
+ *   - `WeakPassword` — backend's password policy rejected the input on
+ *     login. Rare (would only happen for an account whose hash predates
+ *     the current policy) but handled.
+ *   - `NetworkError` — backend unreachable. We tell the user to retry
+ *     rather than blame their credentials.
+ *
+ * Anything we don't recognise falls back to a polite generic message rather
+ * than leaking the raw token.
  */
 
 'use client';
@@ -11,165 +24,190 @@
 import { signIn } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
+import { AuthLayout } from '../../components/AuthLayout';
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<LoginPageFallback />}>
+    <Suspense fallback={<LoginFallback />}>
       <LoginForm />
     </Suspense>
   );
 }
 
-function LoginPageFallback() {
+function LoginFallback() {
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      style={{
-        maxWidth: 400,
-        margin: '80px auto',
-        padding: 24,
-      }}
-    >
-      <h1 style={{ marginBottom: 8 }}>Sign In</h1>
-      <p style={{ color: '#57606a' }}>Loading sign-in form...</p>
-    </main>
+    <AuthLayout title="Sign in" subtitle="Loading sign-in form…">
+      <div aria-live="polite" />
+    </AuthLayout>
   );
+}
+
+interface ErrorDisplay {
+  title: string;
+  body: string;
+}
+
+/**
+ * Maps the NextAuth `?error=<code>` URL param (or a local form error) to a
+ * user-friendly title + body. Codes that pack data (e.g. `AccountLocked:120`)
+ * are parsed here so the message can include specifics like a countdown.
+ */
+function describeError(code: string | null): ErrorDisplay | null {
+  if (!code) return null;
+
+  // AccountLocked:<remainingSeconds>
+  if (code.startsWith('AccountLocked')) {
+    const seconds = Number(code.split(':')[1] ?? '0');
+    const minutes = Math.max(1, Math.ceil(seconds / 60));
+    return {
+      title: 'Account temporarily locked',
+      body: `Too many failed sign-in attempts. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+    };
+  }
+
+  switch (code) {
+    case 'InvalidCredentials':
+    case 'CredentialsSignin':
+      return {
+        title: 'Sign-in failed',
+        body: 'Email or password is incorrect. Please check and try again.',
+      };
+    case 'WeakPassword':
+      return {
+        title: 'Password no longer meets policy',
+        body: 'Your password no longer satisfies our security policy. Please reset it to sign in.',
+      };
+    case 'NetworkError':
+      return {
+        title: 'Connection problem',
+        body: "We couldn't reach the sign-in service. Check your connection and try again in a moment.",
+      };
+    default:
+      return {
+        title: 'Sign-in failed',
+        body: 'Something went wrong. Please try again.',
+      };
+  }
 }
 
 function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
-  const error = searchParams.get('error');
+  const urlError = searchParams.get('error');
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formErrorCode, setFormErrorCode] = useState<string | null>(null);
+
+  const errorDisplay = describeError(formErrorCode ?? urlError);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!email || !password) {
+      setFormErrorCode('InvalidCredentials');
+      return;
+    }
     setIsLoading(true);
-    setFormError(null);
+    setFormErrorCode(null);
 
+    // Use `redirect: false` so we can inspect the result and render a
+    // specific message in-place rather than landing back here through
+    // a URL roundtrip.
     const result = await signIn('credentials', {
       email,
       password,
-      redirect: true,
+      redirect: false,
       callbackUrl,
     });
 
-    if (result?.error) {
-      setFormError('Invalid email or password. Please try again.');
-      setIsLoading(false);
+    if (result?.ok && result.url) {
+      window.location.href = result.url;
+      return;
     }
+
+    setFormErrorCode(result?.error ?? 'CredentialsSignin');
+    setIsLoading(false);
   }
 
   return (
-    <main
-      id="main-content"
-      tabIndex={-1}
-      style={{
-        maxWidth: 400,
-        margin: '80px auto',
-        padding: 24,
-      }}
+    <AuthLayout
+      title="Sign in"
+      subtitle="Access your personalised scheme recommendations and benefits dashboard."
     >
-      <h1 style={{ marginBottom: 8 }}>Sign In</h1>
-      <p style={{ color: '#57606a', marginTop: 0, marginBottom: 24 }}>
-        Sign in to access your personalized scheme recommendations and benefits dashboard.
-      </p>
-
-      {(error || formError) && (
-        <div
-          role="alert"
-          style={{
-            padding: 12,
-            border: '1px solid #d73a49',
-            background: '#ffeef0',
-            color: '#86181d',
-            borderRadius: 4,
-            marginBottom: 16,
-            fontSize: 14,
-          }}
-        >
-          {formError || 'Authentication failed. Please try again.'}
+      {errorDisplay && (
+        <div role="alert" className="bb-auth-alert">
+          <span aria-hidden="true" className="bb-auth-alert-icon">!</span>
+          <div className="bb-auth-alert-body">
+            <p className="bb-auth-alert-title">{errorDisplay.title}</p>
+            <p>{errorDisplay.body}</p>
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <label
-            htmlFor="email"
-            style={{ display: 'block', marginBottom: 4, fontWeight: 500, fontSize: 14 }}
-          >
+      <form
+        onSubmit={handleSubmit}
+        className="bb-auth-form"
+        noValidate
+        aria-describedby={errorDisplay ? 'login-error-summary' : undefined}
+      >
+        <div className="bb-field">
+          <label htmlFor="email" className="bb-field-label">
             Email
           </label>
           <input
             id="email"
             type="email"
+            className="bb-field-input"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              border: '1px solid #d0d7de',
-              borderRadius: 4,
-              fontSize: 16,
-            }}
+            placeholder="you@example.com"
+            aria-invalid={errorDisplay ? 'true' : undefined}
+            disabled={isLoading}
           />
         </div>
 
-        <div>
-          <label
-            htmlFor="password"
-            style={{ display: 'block', marginBottom: 4, fontWeight: 500, fontSize: 14 }}
-          >
+        <div className="bb-field">
+          <label htmlFor="password" className="bb-field-label">
             Password
           </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete="current-password"
-            style={{
-              width: '100%',
-              padding: '10px 12px',
-              border: '1px solid #d0d7de',
-              borderRadius: 4,
-              fontSize: 16,
-            }}
-          />
+          <div className="bb-password-wrap">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              className="bb-field-input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              placeholder="••••••••"
+              aria-invalid={errorDisplay ? 'true' : undefined}
+              disabled={isLoading}
+            />
+            <button
+              type="button"
+              className="bb-password-toggle"
+              onClick={() => setShowPassword((s) => !s)}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              tabIndex={0}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading}
-          style={{
-            padding: '12px 16px',
-            background: isLoading ? '#8c9bab' : '#0b5394',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            fontSize: 16,
-            fontWeight: 600,
-            cursor: isLoading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {isLoading ? 'Signing in...' : 'Sign In'}
+        <button type="submit" className="bb-auth-submit" disabled={isLoading}>
+          {isLoading ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 
-      <p style={{ marginTop: 24, textAlign: 'center', fontSize: 14, color: '#57606a' }}>
-        Don&apos;t have an account?{' '}
-        <a href="/register" style={{ color: '#0b5394' }}>
-          Create one
-        </a>
+      <p className="bb-auth-foot">
+        Don&apos;t have an account? <a href="/register">Create one</a>
       </p>
-    </main>
+    </AuthLayout>
   );
 }

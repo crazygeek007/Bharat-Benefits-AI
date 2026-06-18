@@ -1,0 +1,480 @@
+/*
+ * Auth pages — shared visual language for /login and /register.
+ *
+ * Split-screen layout:
+ *   - Left  (≥ 768px): form column on light surface, max 480px wide
+ *   - Right (≥ 768px): gradient panel with brand mark, tagline, feature list
+ *   - Below 768px: panel collapses, form becomes full-width centered
+ *
+ * Tokens consumed from globals.css (--brand, --gradient, --surface, etc.)
+ * so the visual language stays consistent with the rest of the site.
+ */
+
+.bb-auth-shell {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 1fr;
+  background: var(--surface);
+}
+
+@media (min-width: 768px) {
+  .bb-auth-shell {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ─── Form column ────────────────────────────────────────────────────── */
+
+.bb-auth-form-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 24px;
+  min-height: 100dvh;
+}
+
+@media (min-width: 768px) {
+  .bb-auth-form-col {
+    padding: 48px 56px;
+  }
+}
+
+.bb-auth-form-wrap {
+  width: 100%;
+  max-width: 420px;
+}
+
+.bb-auth-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 40px;
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+.bb-auth-brand-row:hover {
+  color: var(--brand);
+}
+
+.bb-auth-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--gradient);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 0 0 1px rgb(99 102 241 / 0.2), 0 2px 4px rgb(99 102 241 / 0.2);
+}
+
+.bb-auth-title {
+  margin: 0 0 8px;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text);
+}
+
+.bb-auth-subtitle {
+  margin: 0 0 28px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* ─── Form ───────────────────────────────────────────────────────────── */
+
+.bb-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.bb-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bb-field-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.005em;
+}
+
+.bb-field-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 0.9375rem;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bb-field-input::placeholder {
+  color: var(--text-subtle);
+}
+
+.bb-field-input:hover:not(:focus):not(:disabled) {
+  border-color: var(--text-subtle);
+}
+
+.bb-field-input:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgb(99 102 241 / 0.15);
+}
+
+.bb-field-input:disabled {
+  background: var(--bg-subtle);
+  color: var(--text-subtle);
+  cursor: not-allowed;
+}
+
+.bb-field-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.bb-field-input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 3px rgb(239 68 68 / 0.15);
+}
+
+.bb-field-hint {
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* Password input with reveal toggle */
+
+.bb-password-wrap {
+  position: relative;
+}
+
+.bb-password-wrap .bb-field-input {
+  padding-right: 44px;
+}
+
+.bb-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.bb-password-toggle:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
+}
+
+.bb-password-toggle:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ─── Password requirements checklist ───────────────────────────────── */
+
+.bb-pw-checklist {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.bb-pw-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+  transition: color 0.15s ease;
+}
+
+.bb-pw-checklist li[data-met='true'] {
+  color: var(--success);
+}
+
+.bb-pw-check-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-subtle);
+  color: var(--text-subtle);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.bb-pw-checklist li[data-met='true'] .bb-pw-check-icon {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+/* ─── Submit button ─────────────────────────────────────────────────── */
+
+.bb-auth-submit {
+  margin-top: 4px;
+  padding: 12px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--gradient);
+  color: #fff;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(99 102 241 / 0.25);
+  transition: transform 0.1s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  letter-spacing: -0.005em;
+}
+
+.bb-auth-submit:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgb(99 102 241 / 0.35);
+  transform: translateY(-1px);
+}
+
+.bb-auth-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.bb-auth-submit:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.bb-auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ─── Inline alert (for backend error codes) ────────────────────────── */
+
+.bb-auth-alert {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
+  color: #991b1b;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.bb-auth-alert--info {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.bb-auth-alert-icon {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.3;
+}
+
+.bb-auth-alert-body {
+  flex: 1;
+}
+
+.bb-auth-alert-title {
+  margin: 0 0 2px;
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.bb-auth-alert-body p {
+  margin: 0;
+}
+
+.bb-auth-alert ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.bb-auth-alert li {
+  margin: 1px 0;
+}
+
+/* ─── Footer link row ───────────────────────────────────────────────── */
+
+.bb-auth-foot {
+  margin-top: 28px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bb-auth-foot a {
+  color: var(--brand);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.bb-auth-foot a:hover {
+  text-decoration: underline;
+}
+
+/* ─── Right-side panel ──────────────────────────────────────────────── */
+
+.bb-auth-panel {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .bb-auth-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 48px 56px;
+    background: var(--gradient);
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+}
+
+/* Soft decorative orbs in the panel */
+.bb-auth-panel::before,
+.bb-auth-panel::after {
+  content: '';
+  position: absolute;
+  border-radius: var(--radius-full);
+  filter: blur(80px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.bb-auth-panel::before {
+  top: -120px;
+  right: -100px;
+  width: 360px;
+  height: 360px;
+  background: #fbcfe8;
+}
+
+.bb-auth-panel::after {
+  bottom: -140px;
+  left: -120px;
+  width: 420px;
+  height: 420px;
+  background: #a5b4fc;
+}
+
+.bb-auth-panel-top,
+.bb-auth-panel-bottom {
+  position: relative;
+  z-index: 1;
+}
+
+.bb-auth-panel-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  background: rgb(255 255 255 / 0.18);
+  border: 1px solid rgb(255 255 255 / 0.25);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  margin-bottom: 28px;
+}
+
+.bb-auth-panel-eyebrow-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: #fff;
+  box-shadow: 0 0 8px rgb(255 255 255 / 0.8);
+}
+
+.bb-auth-panel-heading {
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0 0 16px;
+  max-width: 480px;
+}
+
+.bb-auth-panel-lede {
+  font-size: 1rem;
+  line-height: 1.55;
+  max-width: 440px;
+  color: rgb(255 255 255 / 0.85);
+  margin: 0;
+}
+
+.bb-auth-panel-feats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bb-auth-panel-feat {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: rgb(255 255 255 / 0.88);
+}
+
+.bb-auth-panel-feat-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: rgb(255 255 255 / 0.18);
+  border: 1px solid rgb(255 255 255 / 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+}
+
+.bb-auth-panel-feat strong {
+  display: block;
+  color: #fff;
+  font-weight: 600;
+  margin-bottom: 2px;
+  font-size: 0.9375rem;
+}

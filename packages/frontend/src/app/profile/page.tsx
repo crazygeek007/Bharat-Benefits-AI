@@ -4,8 +4,12 @@
  * Server component that fetches the authenticated citizen's profile and
  * displays it. Wired to `GET /api/profile` via the typed API client.
  *
- * Profile updates and deletion are handled via client-side actions that
- * call the API client's updateProfile/deleteProfile methods.
+ * Note on auth: the session check below is enough to gate access. A
+ * missing `backendToken` would mean the session was issued before the
+ * bundled-token wiring or somehow got corrupted; in either case the
+ * right response is to send the user back to /login. The previous code
+ * showed a fake "complete your profile" prompt for this state, which
+ * masked the real broken session.
  */
 
 import type { Metadata } from 'next';
@@ -14,37 +18,28 @@ import { redirect } from 'next/navigation';
 import { authOptions } from '../../lib/auth';
 import { createApiClient, type ProfileResponse } from '../../lib/api-client';
 import { MAIN_CONTENT_ID } from '../../components/SkipLink';
+import { formatINR } from '../../lib/formatCurrency';
 
 export const metadata: Metadata = {
   title: 'My Profile — Bharat Benefits AI',
-  description: 'Manage your profile to get accurate eligibility calculations and personalized recommendations.',
+  description:
+    'Manage your profile to get accurate eligibility calculations and personalized recommendations.',
 };
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions);
-  const backendToken =
-    typeof (session as unknown as { backendToken?: unknown })?.backendToken === 'string'
-      ? (session as unknown as { backendToken: string }).backendToken
-      : null;
-
   if (!session) {
     redirect('/login?callbackUrl=/profile');
   }
 
-  // If no backend token, show profile creation prompt
+  const backendToken =
+    typeof (session as unknown as { backendToken?: unknown }).backendToken === 'string'
+      ? (session as unknown as { backendToken: string }).backendToken
+      : null;
+
   if (!backendToken) {
-    return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
-        <h1>My Profile</h1>
-        <p style={{ color: '#57606a' }}>
-          Complete your profile to get accurate eligibility calculations and
-          personalized scheme recommendations.
-        </p>
-        <p>
-          <a href="/profile/edit" style={{ color: '#0b5394' }}>Create your profile →</a>
-        </p>
-      </main>
-    );
+    // Session exists but no backend JWT — broken state, force a fresh login.
+    redirect('/login?callbackUrl=/profile');
   }
 
   const client = createApiClient({ authToken: backendToken });
@@ -56,23 +51,19 @@ export default async function ProfilePage() {
     profileData = await client.getProfile();
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
-    // Treat 401 as expired session — redirect to login
     if (msg.includes('401')) {
       redirect('/login?callbackUrl=/profile');
     }
-    // Treat 404 as "no profile endpoint yet" — show empty state
-    if (msg.includes('404')) {
-      profileData = { profile: null };
-    } else {
-      error = msg || 'Unable to load profile';
-    }
+    error = msg || 'Unable to load profile';
   }
 
   if (error) {
     return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
-        <h1>My Profile</h1>
-        <div role="alert" style={{ padding: 12, border: '1px solid #d73a49', background: '#ffeef0', color: '#86181d', borderRadius: 4 }}>
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page bb-app-page--narrow">
+        <header className="bb-app-page__head">
+          <h1 className="bb-app-page__title">My Profile</h1>
+        </header>
+        <div role="alert" className="bb-page-alert">
           {error}
         </div>
       </main>
@@ -83,81 +74,90 @@ export default async function ProfilePage() {
 
   if (!profile) {
     return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
-        <h1>My Profile</h1>
-        <p style={{ color: '#57606a' }}>
-          Complete your profile to get accurate eligibility calculations and
-          personalized scheme recommendations.
-        </p>
-        <p>
-          <a href="/profile/edit" style={{ color: '#0b5394' }}>Create your profile →</a>
-        </p>
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page bb-app-page--narrow">
+        <header className="bb-app-page__head">
+          <h1 className="bb-app-page__title">My Profile</h1>
+          <p className="bb-app-page__lede">
+            Complete your profile so we can match you to schemes you actually
+            qualify for.
+          </p>
+        </header>
+        <section className="bb-card">
+          <div className="bb-empty">
+            <p className="bb-empty__title">No profile yet</p>
+            <p style={{ marginBottom: 20 }}>
+              Add your age, state, income, and a few other details so the
+              eligibility engine can do its job.
+            </p>
+            <a className="bb-button-primary" href="/profile/edit">
+              Create your profile
+            </a>
+          </div>
+        </section>
       </main>
     );
   }
 
   return (
-    <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
-      <h1>My Profile</h1>
-      <p style={{ color: '#57606a', marginTop: 0 }}>
-        Keep your profile up to date for accurate eligibility and recommendations.
-      </p>
+    <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page bb-app-page--narrow">
+      <header className="bb-app-page__head">
+        <h1 className="bb-app-page__title">My Profile</h1>
+        <p className="bb-app-page__lede">
+          Keep this up to date for accurate eligibility and recommendations.
+        </p>
+      </header>
 
-      <dl style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '8px 16px', marginTop: 24 }}>
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Age</dt>
-        <dd style={{ margin: 0 }}>{profile.age ?? '—'}</dd>
+      <section className="bb-card">
+        <dl className="bb-detail-list">
+          <dt>Age</dt>
+          <dd>{profile.age ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Gender</dt>
-        <dd style={{ margin: 0 }}>{profile.gender ?? '—'}</dd>
+          <dt>Gender</dt>
+          <dd>{profile.gender ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>State</dt>
-        <dd style={{ margin: 0 }}>{profile.state ?? '—'}</dd>
+          <dt>State</dt>
+          <dd>{profile.state ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>District</dt>
-        <dd style={{ margin: 0 }}>{profile.district ?? '—'}</dd>
+          <dt>District</dt>
+          <dd>{profile.district ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Annual Income (INR)</dt>
-        <dd style={{ margin: 0 }}>
-          {profile.incomeLevel != null
-            ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(profile.incomeLevel)
-            : '—'}
-        </dd>
+          <dt>Annual income</dt>
+          <dd>{formatINR(profile.incomeLevel)}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Occupation</dt>
-        <dd style={{ margin: 0 }}>{profile.occupation ?? '—'}</dd>
+          <dt>Occupation</dt>
+          <dd>{profile.occupation ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Education Level</dt>
-        <dd style={{ margin: 0 }}>{profile.educationLevel ?? '—'}</dd>
+          <dt>Education</dt>
+          <dd>{profile.educationLevel ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Caste Category</dt>
-        <dd style={{ margin: 0 }}>{profile.casteCategory ?? '—'}</dd>
+          <dt>Caste category</dt>
+          <dd>{profile.casteCategory ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Disability</dt>
-        <dd style={{ margin: 0 }}>{profile.disabilityStatus === true ? 'Yes' : profile.disabilityStatus === false ? 'No' : '—'}</dd>
+          <dt>Disability</dt>
+          <dd>
+            {profile.disabilityStatus === true
+              ? 'Yes'
+              : profile.disabilityStatus === false
+                ? 'No'
+                : '—'}
+          </dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Marital Status</dt>
-        <dd style={{ margin: 0 }}>{profile.maritalStatus ?? '—'}</dd>
+          <dt>Marital status</dt>
+          <dd>{profile.maritalStatus ?? '—'}</dd>
 
-        <dt style={{ fontWeight: 500, color: '#24292f' }}>Dependents</dt>
-        <dd style={{ margin: 0 }}>{profile.dependents ?? '—'}</dd>
-      </dl>
+          <dt>Dependents</dt>
+          <dd>{profile.dependents ?? '—'}</dd>
+        </dl>
 
-      <div style={{ marginTop: 32, display: 'flex', gap: 12 }}>
-        <a
-          href="/profile/edit"
-          style={{
-            display: 'inline-block',
-            padding: '8px 16px',
-            background: '#0b5394',
-            color: '#fff',
-            borderRadius: 4,
-            textDecoration: 'none',
-            fontWeight: 500,
-          }}
-        >
-          Edit Profile
-        </a>
-      </div>
+        <div style={{ marginTop: 28, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <a className="bb-button-primary" href="/profile/edit">
+            Edit profile
+          </a>
+          <a className="bb-button-secondary" href="/dashboard">
+            View dashboard
+          </a>
+        </div>
+      </section>
     </main>
   );
 }

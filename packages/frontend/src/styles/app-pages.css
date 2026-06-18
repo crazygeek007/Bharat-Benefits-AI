@@ -1,0 +1,329 @@
+/*
+ * Shared page chrome for authenticated app pages — profile, dashboard, etc.
+ *
+ * Uses the same design tokens as the auth pages so the visual language is
+ * consistent the moment a citizen lands after signing in.
+ */
+
+.bb-app-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+@media (min-width: 768px) {
+  .bb-app-page {
+    padding: 40px 32px 72px;
+  }
+}
+
+.bb-app-page--narrow {
+  max-width: 720px;
+}
+
+.bb-app-page__head {
+  margin-bottom: 28px;
+}
+
+.bb-app-page__title {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+
+.bb-app-page__lede {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* ─── Cards ──────────────────────────────────────────────────────────── */
+
+.bb-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.bb-card + .bb-card,
+.bb-card + section,
+section + .bb-card {
+  margin-top: 20px;
+}
+
+.bb-card__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bb-card__count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-subtle);
+}
+
+.bb-card__sub {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* ─── Stat tiles for the dashboard summary row ──────────────────────── */
+
+.bb-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.bb-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+.bb-stat--featured {
+  background: var(--gradient-soft);
+  border-color: transparent;
+}
+
+.bb-stat__label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.bb-stat__value {
+  margin: 6px 0 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.bb-stat--featured .bb-stat__value {
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ─── Banner used for "missed benefits" callout etc. ─────────────────── */
+
+.bb-banner {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  background: var(--warning-bg);
+  color: #78350f;
+  border: 1px solid #fcd34d;
+}
+
+.bb-banner__icon {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.bb-banner strong {
+  color: #78350f;
+}
+
+/* ─── Profile detail list ───────────────────────────────────────────── */
+
+.bb-detail-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px 16px;
+  margin: 0;
+}
+
+@media (min-width: 540px) {
+  .bb-detail-list {
+    grid-template-columns: minmax(140px, 220px) 1fr;
+  }
+}
+
+.bb-detail-list dt {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+@media (min-width: 540px) {
+  .bb-detail-list dt {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.875rem;
+  }
+}
+
+.bb-detail-list dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9375rem;
+}
+
+/* ─── Compact list of scheme links (dashboard sections) ─────────────── */
+
+.bb-scheme-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bb-scheme-list__item {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.bb-scheme-list__item:last-child {
+  border-bottom: none;
+}
+
+.bb-scheme-list__name {
+  color: var(--brand-text);
+  font-weight: 500;
+  text-decoration: none;
+  font-size: 0.9375rem;
+}
+
+.bb-scheme-list__name:hover {
+  text-decoration: underline;
+}
+
+.bb-scheme-list__meta {
+  font-size: 0.75rem;
+  color: var(--text-subtle);
+}
+
+.bb-scheme-list__meta--success {
+  color: var(--success);
+  font-weight: 500;
+}
+
+.bb-scheme-list__meta--warning {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+.bb-scheme-list__meta--danger {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.bb-scheme-list__item--expired {
+  opacity: 0.7;
+}
+
+.bb-scheme-list__item--expired .bb-scheme-list__name {
+  color: var(--text-muted);
+}
+
+/* ─── Empty + action ─────────────────────────────────────────────────── */
+
+.bb-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: var(--text-muted);
+}
+
+.bb-empty__title {
+  font-size: 1.125rem;
+  color: var(--text);
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+
+.bb-empty p {
+  margin: 0 auto;
+  max-width: 420px;
+}
+
+.bb-button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  background: var(--gradient);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgb(99 102 241 / 0.25);
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bb-button-primary:hover {
+  box-shadow: 0 4px 12px rgb(99 102 241 / 0.35);
+  transform: translateY(-1px);
+}
+
+.bb-button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bb-button-secondary:hover {
+  background: var(--bg-subtle);
+}
+
+/* ─── Page-level error alert (reuses auth alert tokens) ─────────────── */
+
+.bb-page-alert {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
+  color: #991b1b;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}

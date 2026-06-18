@@ -6,6 +6,10 @@
  * plus estimated total benefit value and missed benefits summary.
  *
  * Wired to `GET /api/dashboard` via the typed API client.
+ *
+ * Auth: a session without `backendToken` is treated as broken and the
+ * user is sent back to /login rather than seeing an empty placeholder.
+ * That previously masked real session corruption.
  */
 
 import type { Metadata } from 'next';
@@ -14,6 +18,7 @@ import { redirect } from 'next/navigation';
 import { authOptions } from '../../lib/auth';
 import { createApiClient, type DashboardResponse } from '../../lib/api-client';
 import { MAIN_CONTENT_ID } from '../../components/SkipLink';
+import { formatINR } from '../../lib/formatCurrency';
 
 export const metadata: Metadata = {
   title: 'Benefits Dashboard — Bharat Benefits AI',
@@ -22,26 +27,17 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
-  const backendToken =
-    typeof (session as unknown as { backendToken?: unknown })?.backendToken === 'string'
-      ? (session as unknown as { backendToken: string }).backendToken
-      : null;
-
   if (!session) {
     redirect('/login?callbackUrl=/dashboard');
   }
 
-  // If no backend token yet, show empty dashboard
+  const backendToken =
+    typeof (session as unknown as { backendToken?: unknown }).backendToken === 'string'
+      ? (session as unknown as { backendToken: string }).backendToken
+      : null;
+
   if (!backendToken) {
-    return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Benefits Dashboard</h1>
-        <div style={{ textAlign: 'center', padding: 48, color: '#57606a' }}>
-          <p style={{ fontSize: 18 }}>Your dashboard is empty</p>
-          <p>Start by <a href="/schemes" style={{ color: '#0b5394' }}>discovering schemes</a> or completing your <a href="/profile" style={{ color: '#0b5394' }}>profile</a> for personalized recommendations.</p>
-        </div>
-      </main>
-    );
+    redirect('/login?callbackUrl=/dashboard');
   }
 
   const client = createApiClient({ authToken: backendToken });
@@ -53,23 +49,19 @@ export default async function DashboardPage() {
     dashboard = await client.getDashboard();
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
-    // Treat 401 as expired session — redirect to login
     if (msg.includes('401')) {
       redirect('/login?callbackUrl=/dashboard');
     }
-    // Treat 404 as "endpoint not wired yet" — show empty dashboard
-    if (msg.includes('404')) {
-      dashboard = null;
-    } else {
-      error = msg || 'Unable to load dashboard';
-    }
+    error = msg || 'Unable to load dashboard';
   }
 
   if (error) {
     return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Benefits Dashboard</h1>
-        <div role="alert" style={{ padding: 12, border: '1px solid #d73a49', background: '#ffeef0', color: '#86181d', borderRadius: 4 }}>
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page">
+        <header className="bb-app-page__head">
+          <h1 className="bb-app-page__title">Benefits Dashboard</h1>
+        </header>
+        <div role="alert" className="bb-page-alert">
           {error}
         </div>
       </main>
@@ -77,130 +69,204 @@ export default async function DashboardPage() {
   }
 
   if (!dashboard) {
-    return (
-      <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-        <h1>Benefits Dashboard</h1>
-        <div style={{ textAlign: 'center', padding: 48, color: '#57606a' }}>
-          <p style={{ fontSize: 18 }}>Your dashboard is empty</p>
-          <p>Start by <a href="/schemes" style={{ color: '#0b5394' }}>discovering schemes</a> or completing your <a href="/profile" style={{ color: '#0b5394' }}>profile</a> for personalized recommendations.</p>
-        </div>
-      </main>
-    );
+    // /api/dashboard returned an unexpected null. Render the empty state.
+    return <EmptyDashboard />;
   }
 
-  const formatINR = (amount: number) =>
-    new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount);
+  const everythingZero =
+    dashboard.counts.eligible === 0 &&
+    dashboard.counts.applied === 0 &&
+    dashboard.counts.saved === 0 &&
+    dashboard.counts.expired === 0;
+
+  if (everythingZero) {
+    return <EmptyDashboard />;
+  }
 
   return (
-    <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-      <h1>Benefits Dashboard</h1>
+    <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page">
+      <header className="bb-app-page__head">
+        <h1 className="bb-app-page__title">Benefits Dashboard</h1>
+        <p className="bb-app-page__lede">
+          Track your eligible, applied, saved, and expired schemes in one place.
+        </p>
+      </header>
 
-      {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <div style={{ padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#f6f8fa' }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#57606a' }}>Estimated Total Benefits</p>
-          <p style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 600 }}>
-            {formatINR(dashboard.estimatedTotalBenefitValue)}
-          </p>
+      <div className="bb-stat-grid">
+        <div className="bb-stat bb-stat--featured">
+          <p className="bb-stat__label">Estimated total benefits</p>
+          <p className="bb-stat__value">{formatINR(dashboard.estimatedTotalBenefitValue)}</p>
         </div>
-        <div style={{ padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#f6f8fa' }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#57606a' }}>Eligible</p>
-          <p style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 600 }}>{dashboard.counts.eligible}</p>
+        <div className="bb-stat">
+          <p className="bb-stat__label">Eligible</p>
+          <p className="bb-stat__value">{dashboard.counts.eligible}</p>
         </div>
-        <div style={{ padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#f6f8fa' }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#57606a' }}>Applied</p>
-          <p style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 600 }}>{dashboard.counts.applied}</p>
+        <div className="bb-stat">
+          <p className="bb-stat__label">Applied</p>
+          <p className="bb-stat__value">{dashboard.counts.applied}</p>
         </div>
-        <div style={{ padding: 16, border: '1px solid #d0d7de', borderRadius: 8, background: '#f6f8fa' }}>
-          <p style={{ margin: 0, fontSize: 13, color: '#57606a' }}>Saved</p>
-          <p style={{ margin: '4px 0 0', fontSize: 24, fontWeight: 600 }}>{dashboard.counts.saved}</p>
+        <div className="bb-stat">
+          <p className="bb-stat__label">Saved</p>
+          <p className="bb-stat__value">{dashboard.counts.saved}</p>
         </div>
       </div>
 
-      {/* Missed Benefits Summary */}
       {dashboard.missedBenefitsSummary.count > 0 && (
-        <div style={{ padding: 12, border: '1px solid #d4a72c', background: '#fff8c5', borderRadius: 4, marginBottom: 16 }}>
-          <strong>Missed Benefits:</strong> You were eligible for {dashboard.missedBenefitsSummary.count} scheme(s)
-          worth an estimated {formatINR(dashboard.missedBenefitsSummary.totalMonetaryValue)} that you didn&apos;t apply for before the deadline.
+        <div className="bb-banner" role="status">
+          <span className="bb-banner__icon" aria-hidden="true">
+            !
+          </span>
+          <div>
+            <strong>Missed benefits:</strong> You were eligible for{' '}
+            {dashboard.missedBenefitsSummary.count} scheme
+            {dashboard.missedBenefitsSummary.count === 1 ? '' : 's'} worth roughly{' '}
+            {formatINR(dashboard.missedBenefitsSummary.totalMonetaryValue)} that
+            you didn&apos;t apply for before the deadline.
+          </div>
         </div>
       )}
 
-      {/* Eligible Schemes */}
-      <section aria-labelledby="eligible-heading" style={{ marginBottom: 24 }}>
-        <h2 id="eligible-heading">Eligible ({dashboard.counts.eligible})</h2>
-        {dashboard.eligible.length === 0 ? (
-          <p style={{ color: '#57606a' }}>No eligible schemes yet. Complete your profile to get personalized recommendations.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {dashboard.eligible.map((s) => (
-              <li key={s.id} style={{ padding: '12px 0', borderBottom: '1px solid #d0d7de' }}>
-                <a href={`/schemes/detail/${s.id}`} style={{ color: '#0b5394', fontWeight: 500 }}>{s.name}</a>
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#57606a' }}>{s.category}</span>
-                {s.benefitAmount && <span style={{ marginLeft: 8, fontSize: 12, color: '#1a7f37' }}>{formatINR(s.benefitAmount)}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Applied Schemes */}
-      <section aria-labelledby="applied-heading" style={{ marginBottom: 24 }}>
-        <h2 id="applied-heading">Applied ({dashboard.counts.applied})</h2>
-        {dashboard.applied.length === 0 ? (
-          <p style={{ color: '#57606a' }}>No applications tracked yet.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {dashboard.applied.map((s) => (
-              <li key={s.id} style={{ padding: '12px 0', borderBottom: '1px solid #d0d7de' }}>
-                <a href={`/schemes/detail/${s.id}`} style={{ color: '#0b5394', fontWeight: 500 }}>{s.name}</a>
-                {s.appliedAt && <span style={{ marginLeft: 8, fontSize: 12, color: '#57606a' }}>Applied: {new Date(s.appliedAt).toLocaleDateString()}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Saved Schemes */}
-      <section aria-labelledby="saved-heading" style={{ marginBottom: 24 }}>
-        <h2 id="saved-heading">Saved ({dashboard.counts.saved})</h2>
-        {dashboard.saved.length === 0 ? (
-          <p style={{ color: '#57606a' }}>No saved schemes. Browse schemes and save the ones you&apos;re interested in.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {dashboard.saved.map((s) => (
-              <li key={s.id} style={{ padding: '12px 0', borderBottom: '1px solid #d0d7de' }}>
-                <a href={`/schemes/detail/${s.id}`} style={{ color: '#0b5394', fontWeight: 500 }}>{s.name}</a>
-                {s.deadline && <span style={{ marginLeft: 8, fontSize: 12, color: '#d4a72c' }}>Deadline: {new Date(s.deadline).toLocaleDateString()}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Expired Schemes */}
-      <section aria-labelledby="expired-heading">
-        <h2 id="expired-heading">Expired ({dashboard.counts.expired})</h2>
-        {dashboard.expired.length === 0 ? (
-          <p style={{ color: '#57606a' }}>No expired schemes.</p>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0 }}>
-            {dashboard.expired.map((s) => (
-              <li key={s.id} style={{ padding: '12px 0', borderBottom: '1px solid #d0d7de', opacity: 0.7 }}>
-                <a href={`/schemes/detail/${s.id}`} style={{ color: '#57606a', fontWeight: 500 }}>{s.name}</a>
-                <span style={{ marginLeft: 8, fontSize: 12, color: '#cf222e' }}>Expired</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {/* Empty state */}
-      {dashboard.counts.eligible === 0 && dashboard.counts.applied === 0 && dashboard.counts.saved === 0 && dashboard.counts.expired === 0 && (
-        <div style={{ textAlign: 'center', padding: 48, color: '#57606a' }}>
-          <p style={{ fontSize: 18 }}>Your dashboard is empty</p>
-          <p>Start by <a href="/schemes" style={{ color: '#0b5394' }}>discovering schemes</a> or completing your <a href="/profile" style={{ color: '#0b5394' }}>profile</a> for personalized recommendations.</p>
-        </div>
-      )}
+      <SchemeSection
+        title="Eligible"
+        count={dashboard.counts.eligible}
+        emptyMessage="No eligible schemes yet. Complete your profile to get personalised recommendations."
+        items={dashboard.eligible.map((s) => ({
+          id: s.id,
+          name: s.name,
+          metaLeft: s.category,
+          metaRight: s.benefitAmount ? formatINR(s.benefitAmount) : undefined,
+          metaRightTone: 'success',
+        }))}
+      />
+      <SchemeSection
+        title="Applied"
+        count={dashboard.counts.applied}
+        emptyMessage="No applications tracked yet."
+        items={dashboard.applied.map((s) => ({
+          id: s.id,
+          name: s.name,
+          metaRight: s.appliedAt
+            ? `Applied ${new Date(s.appliedAt).toLocaleDateString()}`
+            : undefined,
+        }))}
+      />
+      <SchemeSection
+        title="Saved"
+        count={dashboard.counts.saved}
+        emptyMessage="No saved schemes. Browse and save the ones you're interested in."
+        items={dashboard.saved.map((s) => ({
+          id: s.id,
+          name: s.name,
+          metaRight: s.deadline
+            ? `Deadline ${new Date(s.deadline).toLocaleDateString()}`
+            : undefined,
+          metaRightTone: 'warning',
+        }))}
+      />
+      <SchemeSection
+        title="Expired"
+        count={dashboard.counts.expired}
+        emptyMessage="No expired schemes."
+        items={dashboard.expired.map((s) => ({
+          id: s.id,
+          name: s.name,
+          metaRight: 'Expired',
+          metaRightTone: 'danger',
+          expired: true,
+        }))}
+      />
     </main>
+  );
+}
+
+function EmptyDashboard() {
+  return (
+    <main id={MAIN_CONTENT_ID} tabIndex={-1} className="bb-app-page">
+      <header className="bb-app-page__head">
+        <h1 className="bb-app-page__title">Benefits Dashboard</h1>
+      </header>
+      <section className="bb-card">
+        <div className="bb-empty">
+          <p className="bb-empty__title">Your dashboard is empty</p>
+          <p style={{ marginBottom: 20 }}>
+            Start by completing your profile for personalised recommendations,
+            or browse the catalogue and save what catches your eye.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a className="bb-button-primary" href="/profile/edit">
+              Complete profile
+            </a>
+            <a className="bb-button-secondary" href="/schemes">
+              Browse schemes
+            </a>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+interface SchemeRow {
+  id: string;
+  name: string;
+  metaLeft?: string;
+  metaRight?: string;
+  metaRightTone?: 'success' | 'warning' | 'danger';
+  expired?: boolean;
+}
+
+function SchemeSection({
+  title,
+  count,
+  emptyMessage,
+  items,
+}: {
+  title: string;
+  count: number;
+  emptyMessage: string;
+  items: SchemeRow[];
+}) {
+  const headingId = `dashboard-section-${title.toLowerCase()}`;
+  return (
+    <section aria-labelledby={headingId} className="bb-card">
+      <h2 id={headingId} className="bb-card__title">
+        {title}
+        <span className="bb-card__count">{count}</span>
+      </h2>
+      {items.length === 0 ? (
+        <p className="bb-card__sub">{emptyMessage}</p>
+      ) : (
+        <ul className="bb-scheme-list">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className={
+                item.expired
+                  ? 'bb-scheme-list__item bb-scheme-list__item--expired'
+                  : 'bb-scheme-list__item'
+              }
+            >
+              <a href={`/schemes/detail/${item.id}`} className="bb-scheme-list__name">
+                {item.name}
+              </a>
+              {item.metaLeft && (
+                <span className="bb-scheme-list__meta">{item.metaLeft}</span>
+              )}
+              {item.metaRight && (
+                <span
+                  className={
+                    item.metaRightTone
+                      ? `bb-scheme-list__meta bb-scheme-list__meta--${item.metaRightTone}`
+                      : 'bb-scheme-list__meta'
+                  }
+                >
+                  {item.metaRight}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

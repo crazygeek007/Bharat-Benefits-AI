@@ -26,6 +26,7 @@ import type {
   SchemeComparisonResponse,
   SchemeEligibilityRow,
 } from '../lib/api';
+import { formatINR } from '../lib/formatCurrency';
 
 export interface SchemeComparisonTableProps {
   data: SchemeComparisonResponse;
@@ -80,11 +81,7 @@ function formatBenefitAmount(amount: number | null): string {
   if (amount === null || amount === undefined || !Number.isFinite(amount)) {
     return '';
   }
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return formatINR(amount);
 }
 
 function renderBenefits(value: unknown) {
