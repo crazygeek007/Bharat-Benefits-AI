@@ -206,6 +206,26 @@ body {
   gap: 8px;
 }
 
+/*
+ * Desktop layout: pin the language switcher + Sign in to the far right.
+ * Without an explicit `order`, the controls block inherits the default
+ * (0) and lands between brand and nav (which has order: 2). Combined
+ * with `justify-content: space-between` on the header inner, that
+ * places Sign in visually in the middle of the bar. Pushing the
+ * controls past the nav puts them at the far-right edge instead, which
+ * matches the standard pattern (brand left, links centre, auth right).
+ *
+ * Mobile is untouched — the controls block contains the hamburger
+ * toggle and must stay adjacent to the brand row before the
+ * collapsible nav panel.
+ */
+@media (min-width: 768px) {
+  .bb-site-header__controls {
+    order: 3;
+    margin-left: auto;
+  }
+}
+
 /* ─── Navigation toggle / hamburger (Req 19.6) ─────────────────────── */
 
 .bb-nav-toggle {
