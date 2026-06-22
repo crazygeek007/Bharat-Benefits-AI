@@ -18,6 +18,7 @@ import Fastify from 'fastify';
 import type { Scheme } from '@bharat-benefits/shared';
 import {
   registerSchemesRoutes,
+  type EligibilityResolver,
   parseFiltersFromQuery,
   parsePaginationFromQuery,
   parseSearchQueryFromQuery,
@@ -382,10 +383,7 @@ function buildDetailApp(args: {
   relationships?: SchemeRelationship[];
   detailLoader?: (id: string) => Promise<SchemeDetail | null>;
   relationshipLoader?: (id: string) => Promise<SchemeRelationship[]>;
-  computeEligibility?: (
-    userId: string,
-    schemeId: string,
-  ) => Promise<EligibilityResult | null>;
+  computeEligibility?: EligibilityResolver;
 }) {
   const app = Fastify({ logger: false });
   registerSchemesRoutes(app, {
@@ -597,7 +595,7 @@ describe('GET /api/schemes/:id/eligibility', () => {
       computeEligibility: async (userId, schemeId) => {
         expect(userId).toBe('user-1');
         expect(schemeId).toBe('scheme-x');
-        return eligibility;
+        return { ok: true, result: eligibility };
       },
     });
 
@@ -613,7 +611,7 @@ describe('GET /api/schemes/:id/eligibility', () => {
     await app.close();
   });
 
-  it('returns null eligibility when the citizen has no profile yet', async () => {
+  it('returns null eligibility with a profile-missing reason when the citizen has no profile yet', async () => {
     const app = Fastify({ logger: false });
     app.addHook('onRequest', async (request) => {
       (request as unknown as { user: { sub: string } }).user = {
@@ -622,7 +620,7 @@ describe('GET /api/schemes/:id/eligibility', () => {
     });
     registerSchemesRoutes(app, {
       loadSchemes: async () => [],
-      computeEligibility: async () => null,
+      computeEligibility: async () => ({ ok: false, reason: 'profile-missing' }),
     });
 
     const response = await app.inject({
@@ -632,10 +630,34 @@ describe('GET /api/schemes/:id/eligibility', () => {
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.eligibility).toBeNull();
+    expect(body.reason).toBe('profile-missing');
     await app.close();
   });
 
-  it('returns 503 when the eligibility resolver throws', async () => {
+  it('returns null eligibility with a scheme-missing reason when the scheme cannot be loaded', async () => {
+    const app = Fastify({ logger: false });
+    app.addHook('onRequest', async (request) => {
+      (request as unknown as { user: { sub: string } }).user = {
+        sub: 'user-2b',
+      };
+    });
+    registerSchemesRoutes(app, {
+      loadSchemes: async () => [],
+      computeEligibility: async () => ({ ok: false, reason: 'scheme-missing' }),
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/schemes/scheme-gone/eligibility',
+    });
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.eligibility).toBeNull();
+    expect(body.reason).toBe('scheme-missing');
+    await app.close();
+  });
+
+  it('returns null eligibility with a computation-failed reason when the resolver throws', async () => {
     const app = Fastify({ logger: false });
     app.addHook('onRequest', async (request) => {
       (request as unknown as { user: { sub: string } }).user = {
@@ -653,7 +675,12 @@ describe('GET /api/schemes/:id/eligibility', () => {
       method: 'GET',
       url: '/api/schemes/scheme-z/eligibility',
     });
-    expect(response.statusCode).toBe(503);
+    // We deliberately switched from 503 to 200 + reason so the frontend
+    // surfaces a specific message instead of swallowing the failure.
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.eligibility).toBeNull();
+    expect(body.reason).toBe('computation-failed');
     await app.close();
   });
 });
@@ -667,6 +694,13 @@ describe('GET /api/schemes/:id/eligibility', () => {
 describe('GET /api/schemes/compare', () => {
   function makeCompareApp(args: {
     details: SchemeDetail[];
+    /**
+     * Existing comparison tests pre-date the discriminated resolver shape
+     * and pass back `EligibilityResult | null`. We adapt that here so the
+     * test body stays terse — wrapping `EligibilityResult` as `{ ok: true }`
+     * and `null` as `{ ok: false, reason: 'profile-missing' }` since the
+     * comparison path doesn't surface the reason to callers anyway.
+     */
     eligibility?: (
       userId: string,
       schemeId: string,
@@ -675,10 +709,18 @@ describe('GET /api/schemes/compare', () => {
   }) {
     const byId = new Map(args.details.map((d) => [d.id, d]));
     const app = Fastify({ logger: false });
+    const adapter: EligibilityResolver | undefined = args.eligibility
+      ? async (userId, schemeId) => {
+          const result = await args.eligibility!(userId, schemeId);
+          return result === null
+            ? { ok: false, reason: 'profile-missing' }
+            : { ok: true, result };
+        }
+      : undefined;
     registerSchemesRoutes(app, {
       loadSchemes: async () => [],
       loadSchemeDetail: async (id: string) => byId.get(id) ?? null,
-      computeEligibility: args.eligibility,
+      computeEligibility: adapter,
       resolveUserIdForComparison: () => args.userId ?? null,
     });
     return app;

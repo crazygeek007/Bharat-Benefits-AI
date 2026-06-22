@@ -152,6 +152,12 @@ export interface SchemeDetailResponse {
 export interface SchemeEligibilityResponse {
   schemeId: string;
   eligibility: EligibilityResult | null;
+  /**
+   * Set when `eligibility` is null so the UI can render a specific message
+   * instead of the catch-all "complete your profile" prompt. Kept narrow to
+   * the cases the backend route actually emits.
+   */
+  reason?: 'profile-missing' | 'scheme-missing' | 'computation-failed';
 }
 
 /**

@@ -109,16 +109,36 @@ export type RelationshipLoader = (
 ) => Promise<SchemeRelationship[]>;
 
 /**
+ * Outcome envelope produced by `EligibilityResolver`. The route surfaces
+ * the discriminator to the frontend so the citizen sees a precise message
+ * (complete profile / scheme unavailable / engine offline) instead of the
+ * old catch-all "complete your profile" prompt that masked every failure.
+ */
+export type EligibilityResolution =
+  | { ok: true; result: EligibilityResult }
+  | { ok: false; reason: 'profile-missing' | 'scheme-missing' };
+
+/**
  * Per-citizen eligibility resolver. Implementations look up the user's
  * profile and run `EligibilityEngine.calculateEligibility` against the
- * given scheme. Returning `null` signals "no profile on file" so the route
- * can prompt the citizen to complete their profile before showing
- * eligibility (Req 4.1).
+ * given scheme. The discriminated return shape lets callers tell apart
+ * "no profile on file" from "scheme not found" — both used to collapse to
+ * `null` and confuse the UI (Req 4.1).
  */
 export type EligibilityResolver = (
   userId: string,
   schemeId: string,
-) => Promise<EligibilityResult | null>;
+) => Promise<EligibilityResolution>;
+
+/**
+ * `reason` values the eligibility endpoint may return alongside a `null`
+ * eligibility payload. Exported so the frontend stays in sync via a single
+ * source of truth (kept narrow to the cases the route can actually emit).
+ */
+export type EligibilityNullReason =
+  | 'profile-missing'
+  | 'scheme-missing'
+  | 'computation-failed';
 
 export interface SchemeListResponse {
   schemes: Array<Scheme & { governmentLevel: GovernmentLevel }>;
@@ -406,25 +426,28 @@ function buildDefaultPostgresSearcher(): ElasticsearchSearcher {
 
 /**
  * Default eligibility resolver. Loads the citizen's profile and runs the
- * shared `eligibilityEngine` against the supplied scheme. Returns `null`
- * when the citizen has no profile yet so the UI can prompt them to fill in
- * their details before showing an eligibility verdict (Req 4.1).
+ * shared `eligibilityEngine` against the supplied scheme. Returns a
+ * discriminated `{ ok: false, reason: ... }` envelope when the profile or
+ * scheme cannot be loaded so the route can render a precise prompt
+ * (Req 4.1).
  */
 async function defaultEligibilityResolver(
   userId: string,
   schemeId: string,
-): Promise<EligibilityResult | null> {
+): Promise<EligibilityResolution> {
   const { default: prisma } = await import('../lib/prisma');
   const [profile, schemeRow] = await Promise.all([
     prisma.userProfile.findUnique({ where: { userId } }),
     prisma.scheme.findUnique({ where: { id: schemeId } }),
   ]);
-  if (!profile || !schemeRow) return null;
+  if (!profile) return { ok: false, reason: 'profile-missing' };
+  if (!schemeRow) return { ok: false, reason: 'scheme-missing' };
   const scheme = mapPrismaSchemeRow(schemeRow as unknown as Record<string, unknown>);
-  return eligibilityEngine.calculateEligibility(
+  const result = eligibilityEngine.calculateEligibility(
     profile as unknown as Parameters<typeof eligibilityEngine.calculateEligibility>[0],
     scheme,
   );
+  return { ok: true, result };
 }
 
 function mapPrismaSchemeDocuments(raw: unknown): DocumentRequirement[] {
@@ -691,7 +714,11 @@ export function registerSchemesRoutes(
       payload = await buildComparisonWithEligibility(schemes, async (schemeId) => {
         if (!userId) return null;
         try {
-          return await eligibilityResolver(userId, schemeId);
+          // Comparison cells degrade to `null` whenever the eligibility
+          // resolver can't produce a verdict — the comparison itself is
+          // public data (Req 24.6) so the per-cell decoration is optional.
+          const resolution = await eligibilityResolver(userId, schemeId);
+          return resolution.ok ? resolution.result : null;
         } catch (err) {
           // Eligibility is decorative (Req 24.6) — degrade rather than
           // fail the whole comparison.
@@ -762,21 +789,35 @@ export function registerSchemesRoutes(
           .send({ error: 'Unauthorized', message: 'Authentication required' });
       }
 
-      let result: EligibilityResult | null;
+      let resolution: EligibilityResolution;
       try {
-        result = await eligibilityResolver(userId, id);
+        resolution = await eligibilityResolver(userId, id);
       } catch (err) {
+        // The frontend previously got an opaque 503 here and rendered the
+        // same "complete your profile" copy for engine failures, profile
+        // gaps, and scheme gaps alike. Return 200 with `reason` so the UI
+        // can tell the citizen what actually went wrong.
         request.log.error(
           { err, schemeId: id, userId },
           'failed to compute eligibility',
         );
-        return reply.code(503).send({
-          error: 'ServiceUnavailable',
-          message: 'Unable to compute eligibility right now',
+        return reply.code(200).send({
+          schemeId: id,
+          eligibility: null,
+          reason: 'computation-failed' as EligibilityNullReason,
         });
       }
 
-      return reply.code(200).send({ schemeId: id, eligibility: result });
+      if (resolution.ok) {
+        return reply
+          .code(200)
+          .send({ schemeId: id, eligibility: resolution.result });
+      }
+      return reply.code(200).send({
+        schemeId: id,
+        eligibility: null,
+        reason: resolution.reason as EligibilityNullReason,
+      });
     },
   );
 

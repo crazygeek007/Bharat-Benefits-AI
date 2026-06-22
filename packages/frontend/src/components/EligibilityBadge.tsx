@@ -22,6 +22,13 @@ export interface EligibilityBadgeProps {
    * "complete your profile" copy.
    */
   isAuthenticated?: boolean;
+  /**
+   * Optional reason for a null eligibility response. When present we render
+   * a precise message — `profile-missing` keeps the existing copy, while
+   * `scheme-missing` and `computation-failed` get their own prompts so the
+   * citizen isn't misled into "completing" an already-complete profile.
+   */
+  reason?: 'profile-missing' | 'scheme-missing' | 'computation-failed';
 }
 
 const STATUS_STYLES: Record<EligibilityResult['status'], React.CSSProperties> = {
@@ -36,6 +43,7 @@ const STATUS_STYLES: Record<EligibilityResult['status'], React.CSSProperties> = 
 export function EligibilityBadge({
   eligibility,
   isAuthenticated = true,
+  reason,
 }: EligibilityBadgeProps) {
   if (!eligibility) {
     return (
@@ -52,22 +60,7 @@ export function EligibilityBadge({
         <h2 id="eligibility-heading" style={{ marginTop: 0, fontSize: 18 }}>
           Your eligibility
         </h2>
-        {!isAuthenticated ? (
-          <p style={{ margin: 0, color: '#57606a' }}>
-            <a href="/login" style={{ color: '#0b5394' }}>
-              Sign in
-            </a>{' '}
-            to see whether you are eligible for this scheme.
-          </p>
-        ) : (
-          <p style={{ margin: 0, color: '#57606a' }}>
-            Complete your{' '}
-            <a href="/profile" style={{ color: '#0b5394' }}>
-              profile
-            </a>{' '}
-            to see your eligibility for this scheme.
-          </p>
-        )}
+        {renderNullEligibilityPrompt({ isAuthenticated, reason })}
       </section>
     );
   }
@@ -162,5 +155,60 @@ export function EligibilityBadge({
         </p>
       )}
     </section>
+  );
+}
+
+/**
+ * Picks the right copy for a null-eligibility response. Default (no
+ * `reason`) keeps the legacy "complete your profile" prompt so older
+ * backend versions that don't yet surface a reason still render reasonably.
+ */
+function renderNullEligibilityPrompt({
+  isAuthenticated,
+  reason,
+}: {
+  isAuthenticated: boolean;
+  reason?: 'profile-missing' | 'scheme-missing' | 'computation-failed';
+}) {
+  if (!isAuthenticated) {
+    return (
+      <p style={{ margin: 0, color: '#57606a' }}>
+        <a href="/login" style={{ color: '#0b5394' }}>
+          Sign in
+        </a>{' '}
+        to see whether you are eligible for this scheme.
+      </p>
+    );
+  }
+
+  if (reason === 'scheme-missing') {
+    return (
+      <p style={{ margin: 0, color: '#57606a' }}>
+        Scheme details aren&apos;t available right now, so we can&apos;t check
+        your eligibility. Please try again later.
+      </p>
+    );
+  }
+
+  if (reason === 'computation-failed') {
+    return (
+      <p style={{ margin: 0, color: '#57606a' }}>
+        We couldn&apos;t compute your eligibility for this scheme right now.
+        Please refresh the page in a minute or two.
+      </p>
+    );
+  }
+
+  // `profile-missing` and the legacy no-reason fallback both render the
+  // existing prompt — the only case where "complete your profile" is the
+  // actually correct call to action.
+  return (
+    <p style={{ margin: 0, color: '#57606a' }}>
+      Complete your{' '}
+      <a href="/profile" style={{ color: '#0b5394' }}>
+        profile
+      </a>{' '}
+      to see your eligibility for this scheme.
+    </p>
   );
 }

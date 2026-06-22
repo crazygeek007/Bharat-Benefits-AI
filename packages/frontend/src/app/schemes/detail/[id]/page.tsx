@@ -115,6 +115,7 @@ export default async function SchemeDetailPage({ params }: PageProps) {
       <EligibilityBadge
         eligibility={eligibilityResponse?.eligibility ?? null}
         isAuthenticated={isAuthenticated}
+        reason={eligibilityResponse?.reason}
       />
 
       <CompatibilityList relationships={detail.relationships} />
