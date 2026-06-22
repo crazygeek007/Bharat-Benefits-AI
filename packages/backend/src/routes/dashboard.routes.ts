@@ -15,6 +15,7 @@
  */
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { Dashboard, SchemeWithStatus } from '@bharat-benefits/shared';
 import {
   BenefitsDashboardService,
   benefitsDashboardService as defaultDashboardService,
@@ -71,16 +72,7 @@ export function registerDashboardRoutes(
 
     try {
       const dashboard = await service.getDashboard(userId);
-      // The frontend client expects a flat shape with derived counts.
-      // Re-shape the service response to match — the service returns
-      // grouped buckets but no count summary.
-      const counts = {
-        eligible: dashboard.eligible.length,
-        applied: dashboard.applied.length,
-        saved: dashboard.saved.length,
-        expired: dashboard.expired.length,
-      };
-      return reply.code(200).send({ ...dashboard, counts });
+      return reply.code(200).send(toDashboardResponse(dashboard));
     } catch (err) {
       request.log.error({ err, userId }, 'failed to load dashboard');
       return reply
@@ -126,6 +118,43 @@ export function registerDashboardRoutes(
       }
     },
   );
+}
+
+/**
+ * Flatten a service-side `Dashboard` into the wire shape consumed by the
+ * frontend's typed `DashboardResponse`. The service returns each bucket as
+ * `SchemeWithStatus[]` (with the full scheme nested under `scheme`), but
+ * the frontend renders directly off flat per-row fields — `id`, `name`,
+ * `category`, etc. — so we collapse the nesting here at the HTTP boundary
+ * rather than threading two shapes through the codebase.
+ */
+function toDashboardResponse(dashboard: Dashboard) {
+  return {
+    eligible: dashboard.eligible.map(toDashboardScheme),
+    applied: dashboard.applied.map(toDashboardScheme),
+    saved: dashboard.saved.map(toDashboardScheme),
+    expired: dashboard.expired.map(toDashboardScheme),
+    estimatedTotalBenefitValue: dashboard.estimatedTotalBenefitValue,
+    missedBenefitsSummary: {
+      count: dashboard.missedBenefitsSummary.totalCount,
+      totalMonetaryValue: dashboard.missedBenefitsSummary.totalMonetaryValue,
+    },
+    counts: dashboard.counts,
+  };
+}
+
+function toDashboardScheme(entry: SchemeWithStatus) {
+  return {
+    id: entry.scheme.id,
+    name: entry.scheme.name,
+    category: entry.scheme.category,
+    status: entry.status,
+    benefitType: entry.scheme.benefitType,
+    benefitAmount: entry.scheme.benefitAmount,
+    deadline: entry.scheme.deadline ? entry.scheme.deadline.toISOString() : null,
+    savedAt: entry.savedAt.toISOString(),
+    appliedAt: entry.appliedAt ? entry.appliedAt.toISOString() : null,
+  };
 }
 
 function mapDashboardError(reply: FastifyReply, err: unknown) {

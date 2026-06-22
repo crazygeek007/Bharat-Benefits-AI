@@ -3,6 +3,7 @@ export {
   benefitsDashboardService,
   calculateEstimatedBenefitValue,
   computeEstimatedBenefitValue,
+  DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT,
   deriveStatus,
   transitionStatuses,
   SavedSchemeLimitExceededError,
@@ -11,6 +12,7 @@ export {
 } from './benefits-dashboard-service';
 export type {
   BenefitsDashboardPrisma,
+  BenefitsDashboardSchemeLookupPrisma,
   BenefitsDashboardServiceDeps,
   SavedSchemeWithScheme,
 } from './benefits-dashboard-service';

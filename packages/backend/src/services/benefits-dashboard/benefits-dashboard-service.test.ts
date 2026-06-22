@@ -16,12 +16,14 @@ import { describe, it, expect } from 'vitest';
 import type {
   Benefit,
   EligibilityResult,
+  Recommendation,
   SavedScheme,
   Scheme,
 } from '@bharat-benefits/shared';
 import { MAX_SAVED_SCHEMES } from '@bharat-benefits/shared';
 import {
   BenefitsDashboardService,
+  DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT,
   SavedSchemeLimitExceededError,
   SavedSchemeNotFoundError,
   SchemeNotFoundError,
@@ -29,6 +31,7 @@ import {
   deriveStatus,
   transitionStatuses,
   type BenefitsDashboardPrisma,
+  type BenefitsDashboardSchemeLookupPrisma,
 } from './benefits-dashboard-service';
 
 // ─── Test fixtures ───────────────────────────────────────────────────────────
@@ -632,6 +635,206 @@ describe('BenefitsDashboardService.getDashboard', () => {
       now: () => NOW,
     });
     await expect(service.getDashboard('')).rejects.toThrow(TypeError);
+  });
+});
+
+// ─── Eligible-bucket recommendation fallback ─────────────────────────────────
+
+function makeRecommendation(
+  overrides: Partial<Recommendation> = {},
+): Recommendation {
+  return {
+    schemeId: 'scheme-1',
+    matchScore: 80,
+    benefitAmount: 1000,
+    deadline: null,
+    explanation: '80% match; Central scheme; eligible',
+    priorityGroup: 'central',
+    ...overrides,
+  };
+}
+
+function makeSchemeLookup(schemes: Scheme[]): BenefitsDashboardSchemeLookupPrisma {
+  return {
+    scheme: {
+      async findMany({ where }) {
+        const ids = new Set(where.id.in);
+        return schemes.filter((s) => ids.has(s.id));
+      },
+    },
+  };
+}
+
+describe('BenefitsDashboardService.getDashboard — recommendation fallback', () => {
+  it('fills the Eligible bucket with top recommendations when the citizen has no saved schemes', async () => {
+    const recA = makeScheme({ id: 'rec-a', benefitAmount: 1500, benefitType: 'monetary' });
+    const recB = makeScheme({ id: 'rec-b', benefitAmount: 2500, benefitType: 'monetary' });
+
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma({ saved: [], schemes: new Map() }),
+      eligibilityEngine: makeFakeEligibilityEngine(new Map()),
+      recommendationEngine: {
+        async generateRecommendations() {
+          return [
+            makeRecommendation({ schemeId: 'rec-a', matchScore: 90, benefitAmount: 1500 }),
+            makeRecommendation({ schemeId: 'rec-b', matchScore: 70, benefitAmount: 2500 }),
+          ];
+        },
+      },
+      schemeLookup: makeSchemeLookup([recA, recB]),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.eligible.map((e) => e.scheme.id)).toEqual(['rec-a', 'rec-b']);
+    expect(dashboard.eligible.every((e) => e.status === 'Eligible')).toBe(true);
+    expect(dashboard.eligible.every((e) => e.appliedAt === null)).toBe(true);
+    // estimatedTotalBenefitValue follows the eligible bucket — fallback included.
+    expect(dashboard.estimatedTotalBenefitValue).toBe(4000);
+    expect(dashboard.counts.eligible).toBe(2);
+  });
+
+  it('fills the Eligible bucket when saved schemes exist but none qualify as Eligible', async () => {
+    const notEligibleScheme = makeScheme({ id: 's-no', deadline: FUTURE });
+    const recScheme = makeScheme({ id: 'rec-x', benefitAmount: 500, benefitType: 'monetary' });
+
+    const state: FakeState = {
+      saved: [{ ...makeSaved({ schemeId: 's-no' }), scheme: notEligibleScheme }],
+      schemes: new Map([[notEligibleScheme.id, notEligibleScheme]]),
+    };
+
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma(state),
+      eligibilityEngine: makeFakeEligibilityEngine(
+        new Map([['s-no', notEligibleResult()]]),
+      ),
+      recommendationEngine: {
+        async generateRecommendations() {
+          return [makeRecommendation({ schemeId: 'rec-x', matchScore: 75 })];
+        },
+      },
+      schemeLookup: makeSchemeLookup([recScheme]),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.saved.map((e) => e.scheme.id)).toEqual(['s-no']);
+    expect(dashboard.eligible.map((e) => e.scheme.id)).toEqual(['rec-x']);
+  });
+
+  it('does NOT pull in recommendations when the Eligible bucket is already populated by saved schemes', async () => {
+    const eligibleScheme = makeScheme({ id: 's-elig', deadline: FUTURE });
+    const recScheme = makeScheme({ id: 'rec-x' });
+
+    const state: FakeState = {
+      saved: [{ ...makeSaved({ schemeId: 's-elig' }), scheme: eligibleScheme }],
+      schemes: new Map([[eligibleScheme.id, eligibleScheme]]),
+    };
+
+    let engineCalled = false;
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma(state),
+      eligibilityEngine: makeFakeEligibilityEngine(
+        new Map([['s-elig', eligibleResult()]]),
+      ),
+      recommendationEngine: {
+        async generateRecommendations() {
+          engineCalled = true;
+          return [makeRecommendation({ schemeId: 'rec-x' })];
+        },
+      },
+      schemeLookup: makeSchemeLookup([recScheme]),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.eligible.map((e) => e.scheme.id)).toEqual(['s-elig']);
+    expect(engineCalled).toBe(false);
+  });
+
+  it('excludes recommendations whose scheme is already in another bucket (no duplicates)', async () => {
+    const savedScheme = makeScheme({ id: 'shared', deadline: FUTURE });
+    const otherRec = makeScheme({ id: 'other-rec' });
+
+    const state: FakeState = {
+      // Saved with no eligibility result so it lands in Saved bucket, leaving
+      // the Eligible bucket empty and the fallback path active.
+      saved: [{ ...makeSaved({ schemeId: 'shared' }), scheme: savedScheme }],
+      schemes: new Map([[savedScheme.id, savedScheme]]),
+    };
+
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma(state),
+      eligibilityEngine: makeFakeEligibilityEngine(new Map()),
+      recommendationEngine: {
+        async generateRecommendations() {
+          return [
+            makeRecommendation({ schemeId: 'shared', matchScore: 95 }),
+            makeRecommendation({ schemeId: 'other-rec', matchScore: 60 }),
+          ];
+        },
+      },
+      schemeLookup: makeSchemeLookup([savedScheme, otherRec]),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.saved.map((e) => e.scheme.id)).toEqual(['shared']);
+    expect(dashboard.eligible.map((e) => e.scheme.id)).toEqual(['other-rec']);
+  });
+
+  it('caps the fallback at DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT entries', async () => {
+    const schemes = Array.from({ length: 20 }, (_, i) =>
+      makeScheme({ id: `rec-${i}` }),
+    );
+
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma({ saved: [], schemes: new Map() }),
+      eligibilityEngine: makeFakeEligibilityEngine(new Map()),
+      recommendationEngine: {
+        async generateRecommendations() {
+          return schemes.map((s, i) =>
+            makeRecommendation({ schemeId: s.id, matchScore: 100 - i }),
+          );
+        },
+      },
+      schemeLookup: makeSchemeLookup(schemes),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.eligible.length).toBe(DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT);
+  });
+
+  it('returns an empty Eligible bucket when the recommendation engine throws', async () => {
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma({ saved: [], schemes: new Map() }),
+      eligibilityEngine: makeFakeEligibilityEngine(new Map()),
+      recommendationEngine: {
+        async generateRecommendations() {
+          throw new Error('No user profile found');
+        },
+      },
+      schemeLookup: makeSchemeLookup([]),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.eligible).toEqual([]);
+    expect(dashboard.estimatedTotalBenefitValue).toBe(0);
+  });
+
+  it('does not invoke the recommendation engine when no fallback dep is provided (backwards compatibility)', async () => {
+    // The existing constructor signature is no-deps — the service must keep
+    // working when callers omit the recommendationEngine.
+    const service = new BenefitsDashboardService({
+      prisma: makeFakePrisma({ saved: [], schemes: new Map() }),
+      eligibilityEngine: makeFakeEligibilityEngine(new Map()),
+      now: () => NOW,
+    });
+
+    const dashboard = await service.getDashboard('user-1');
+    expect(dashboard.eligible).toEqual([]);
   });
 });
 

@@ -36,6 +36,7 @@ import {
   type Dashboard,
   type EligibilityResult,
   type MissedBenefitsSummary,
+  type Recommendation,
   type SavedScheme,
   type Scheme,
   type SchemeStatus,
@@ -44,6 +45,14 @@ import {
 import prismaDefault from '../../lib/prisma';
 import { EligibilityEngine } from '../eligibility';
 import type { MissedBenefitsAnalyzer } from '../missed-benefits';
+import { RecommendationEngine, recommendationEngine as defaultRecommendationEngine } from '../recommendation';
+
+/**
+ * Number of recommendation-engine entries surfaced under the Eligible bucket
+ * when the citizen has not saved any eligible schemes yet. Keeps the
+ * dashboard meaningful for first-time users without flooding the bucket.
+ */
+export const DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT = 10;
 
 // ─── Pure helpers (exported for property tests 12.2 / 12.3) ─────────────────
 
@@ -279,6 +288,17 @@ export interface BenefitsDashboardPrisma {
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
+/**
+ * Minimal Prisma surface needed to hydrate recommendation-fallback entries.
+ * Declared separately so unit tests can supply a focused fake without
+ * exposing the full Prisma client API.
+ */
+export interface BenefitsDashboardSchemeLookupPrisma {
+  scheme: {
+    findMany(args: { where: { id: { in: string[] } } }): Promise<Scheme[]>;
+  };
+}
+
 /** Dependencies injected into the BenefitsDashboardService. */
 export interface BenefitsDashboardServiceDeps {
   prisma?: BenefitsDashboardPrisma;
@@ -290,6 +310,21 @@ export interface BenefitsDashboardServiceDeps {
    * stable for callers / tests that don't care about missed benefits.
    */
   missedBenefitsAnalyzer?: Pick<MissedBenefitsAnalyzer, 'getSummary'>;
+  /**
+   * Optional recommendation engine. When the citizen has not saved any
+   * scheme that lands in the Eligible bucket, `getDashboard` falls back to
+   * the top-N recommendations from this engine so the dashboard surfaces
+   * what the citizen actually qualifies for instead of an empty section.
+   *
+   * Injectable for tests; defaults to the module-level singleton.
+   */
+  recommendationEngine?: Pick<RecommendationEngine, 'generateRecommendations'>;
+  /**
+   * Prisma surface used to hydrate the recommendation fallback. Defaults to
+   * the same Prisma client supplied via `prisma`; tests typically pass a
+   * dedicated fake instead.
+   */
+  schemeLookup?: BenefitsDashboardSchemeLookupPrisma;
   /** Override for the wall clock — primarily for deterministic tests. */
   now?: () => Date;
 }
@@ -307,6 +342,10 @@ export class BenefitsDashboardService {
   private readonly missedBenefitsAnalyzer:
     | Pick<MissedBenefitsAnalyzer, 'getSummary'>
     | undefined;
+  private readonly recommendationEngine:
+    | Pick<RecommendationEngine, 'generateRecommendations'>
+    | undefined;
+  private readonly schemeLookup: BenefitsDashboardSchemeLookupPrisma;
   private readonly now: () => Date;
 
   constructor(deps: BenefitsDashboardServiceDeps = {}) {
@@ -314,6 +353,14 @@ export class BenefitsDashboardService {
       deps.prisma ?? (prismaDefault as unknown as BenefitsDashboardPrisma);
     this.eligibilityEngine = deps.eligibilityEngine ?? new EligibilityEngine();
     this.missedBenefitsAnalyzer = deps.missedBenefitsAnalyzer;
+    // The fallback is opt-in via the dependency: callers (such as the
+    // default production singleton below) wire in the recommendation
+    // engine explicitly, while unit tests that don't care about the
+    // fallback can omit it and keep the existing assertions intact.
+    this.recommendationEngine = deps.recommendationEngine;
+    this.schemeLookup =
+      deps.schemeLookup ??
+      (prismaDefault as unknown as BenefitsDashboardSchemeLookupPrisma);
     this.now = deps.now ?? (() => new Date());
   }
 
@@ -335,70 +382,80 @@ export class BenefitsDashboardService {
       include: { scheme: true },
     });
 
-    if (rows.length === 0) {
-      return {
-        eligible: [],
-        applied: [],
-        saved: [],
-        expired: [],
-        estimatedTotalBenefitValue: 0,
-        missedBenefitsSummary: await this.resolveMissedBenefitsSummary(userId),
-        counts: { eligible: 0, applied: 0, saved: 0, expired: 0 },
-      };
-    }
-
-    // Recalculate eligibility once for every saved scheme. The eligibility
-    // engine already enforces the 30-second SLA for up to MAX_SAVED_SCHEMES
-    // (100) entries (Req 3.3).
-    let eligibilityResults: Map<string, EligibilityResult>;
-    try {
-      const calculated =
-        await this.eligibilityEngine.recalculateAllSavedSchemes(userId);
-      eligibilityResults = new Map(
-        calculated.map((entry) => [entry.schemeId, entry.result]),
-      );
-    } catch {
-      // If eligibility cannot be computed (e.g. profile missing) we still
-      // surface a useful dashboard — schemes simply can't be promoted to the
-      // Eligible bucket and stay under Saved.
-      eligibilityResults = new Map();
-    }
-
     const now = this.now();
     const eligible: SchemeWithStatus[] = [];
     const applied: SchemeWithStatus[] = [];
     const saved: SchemeWithStatus[] = [];
     const expired: SchemeWithStatus[] = [];
 
-    for (const row of rows) {
-      const status = deriveStatus(
-        { status: row.status, appliedAt: row.appliedAt },
-        { deadline: row.scheme.deadline },
-        eligibilityResults.get(row.schemeId),
+    if (rows.length > 0) {
+      // Recalculate eligibility once for every saved scheme. The eligibility
+      // engine already enforces the 30-second SLA for up to MAX_SAVED_SCHEMES
+      // (100) entries (Req 3.3).
+      let eligibilityResults: Map<string, EligibilityResult>;
+      try {
+        const calculated =
+          await this.eligibilityEngine.recalculateAllSavedSchemes(userId);
+        eligibilityResults = new Map(
+          calculated.map((entry) => [entry.schemeId, entry.result]),
+        );
+      } catch {
+        // If eligibility cannot be computed (e.g. profile missing) we still
+        // surface a useful dashboard — schemes simply can't be promoted to the
+        // Eligible bucket and stay under Saved.
+        eligibilityResults = new Map();
+      }
+
+      for (const row of rows) {
+        const status = deriveStatus(
+          { status: row.status, appliedAt: row.appliedAt },
+          { deadline: row.scheme.deadline },
+          eligibilityResults.get(row.schemeId),
+          now,
+        );
+        const entry: SchemeWithStatus = {
+          scheme: row.scheme,
+          status,
+          savedAt: row.savedAt,
+          appliedAt: row.appliedAt,
+        };
+
+        switch (status) {
+          case 'Eligible':
+            eligible.push(entry);
+            break;
+          case 'Applied':
+            applied.push(entry);
+            break;
+          case 'Expired':
+            expired.push(entry);
+            break;
+          case 'Saved':
+          default:
+            saved.push(entry);
+            break;
+        }
+      }
+    }
+
+    // Fallback: when no saved scheme lands in the Eligible bucket the
+    // dashboard would otherwise show an empty "what you qualify for"
+    // section — a confusing first-run experience. Surface the top
+    // recommendations the engine has already computed for the profile so
+    // citizens see what they're eligible for before they've saved
+    // anything. Errors here must never break the dashboard render.
+    if (eligible.length === 0) {
+      const excludedSchemeIds = new Set<string>([
+        ...applied.map((e) => e.scheme.id),
+        ...saved.map((e) => e.scheme.id),
+        ...expired.map((e) => e.scheme.id),
+      ]);
+      const fallback = await this.loadRecommendationFallback(
+        userId,
+        excludedSchemeIds,
         now,
       );
-      const entry: SchemeWithStatus = {
-        scheme: row.scheme,
-        status,
-        savedAt: row.savedAt,
-        appliedAt: row.appliedAt,
-      };
-
-      switch (status) {
-        case 'Eligible':
-          eligible.push(entry);
-          break;
-        case 'Applied':
-          applied.push(entry);
-          break;
-        case 'Expired':
-          expired.push(entry);
-          break;
-        case 'Saved':
-        default:
-          saved.push(entry);
-          break;
-      }
+      for (const entry of fallback) eligible.push(entry);
     }
 
     const estimatedTotalBenefitValue = calculateEstimatedBenefitValue(
@@ -419,6 +476,67 @@ export class BenefitsDashboardService {
         expired: expired.length,
       },
     };
+  }
+
+  /**
+   * Hydrates the top recommendations into `SchemeWithStatus` entries used to
+   * fill the Eligible bucket when the citizen has no saved schemes that
+   * qualify yet. Excludes any scheme already represented in another bucket
+   * so the dashboard never shows the same scheme twice.
+   *
+   * Returns an empty array (never throws) when the recommendation engine
+   * cannot run — e.g. the citizen has no profile yet — so the dashboard
+   * always renders.
+   */
+  private async loadRecommendationFallback(
+    userId: string,
+    excludedSchemeIds: Set<string>,
+    now: Date,
+  ): Promise<SchemeWithStatus[]> {
+    if (!this.recommendationEngine) return [];
+
+    let recommendations: Recommendation[];
+    try {
+      recommendations = await this.recommendationEngine.generateRecommendations(
+        userId,
+      );
+    } catch {
+      return [];
+    }
+
+    const fresh = recommendations.filter(
+      (rec) => !excludedSchemeIds.has(rec.schemeId),
+    );
+    if (fresh.length === 0) return [];
+
+    const top = fresh.slice(0, DASHBOARD_RECOMMENDATION_FALLBACK_LIMIT);
+    const ids = top.map((r) => r.schemeId);
+
+    let schemes: Scheme[];
+    try {
+      schemes = await this.schemeLookup.scheme.findMany({
+        where: { id: { in: ids } },
+      });
+    } catch {
+      return [];
+    }
+
+    const schemeById = new Map(schemes.map((s) => [s.id, s]));
+    // Preserve the recommendation engine's ordering — top match first.
+    const entries: SchemeWithStatus[] = [];
+    for (const rec of top) {
+      const scheme = schemeById.get(rec.schemeId);
+      if (!scheme) continue;
+      entries.push({
+        scheme,
+        status: 'Eligible',
+        // The citizen has not saved this scheme yet. `now` is a sensible
+        // sentinel — it sorts naturally and keeps the field non-nullable.
+        savedAt: now,
+        appliedAt: null,
+      });
+    }
+    return entries;
   }
 
   /**
@@ -533,5 +651,12 @@ export class BenefitsDashboardService {
   }
 }
 
-/** Default singleton suitable for HTTP handlers and downstream services. */
-export const benefitsDashboardService = new BenefitsDashboardService();
+/**
+ * Default singleton suitable for HTTP handlers and downstream services.
+ * Wires the recommendation engine explicitly so the Eligible bucket falls
+ * back to top recommendations when the citizen has not saved any
+ * qualifying scheme yet.
+ */
+export const benefitsDashboardService = new BenefitsDashboardService({
+  recommendationEngine: defaultRecommendationEngine,
+});
