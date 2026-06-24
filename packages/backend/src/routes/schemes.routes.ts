@@ -21,7 +21,7 @@
  * without a live database / ES / Pinecone.
  */
 
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type {
   DocumentRequirement,
   EligibilityResult,
@@ -761,18 +761,34 @@ export function registerSchemesRoutes(
   //
   // Registered before `/api/schemes/:id` so Fastify's static-vs-parametric
   // matcher consistently routes it to the more specific handler.
+  //
+  // Auth pre-handler resolves `app.authenticate` LAZILY at request time —
+  // Fastify decorates the instance via `fastify-plugin` asynchronously, so
+  // reading `app.authenticate` at route-registration time returns
+  // `undefined` and the route ends up effectively unauthenticated. The
+  // dashboard / profile / notifications routes already do this; mirroring
+  // the pattern here fixes the silent 401 the eligibility endpoint
+  // produced for every signed-in citizen.
   app.get<{ Params: { id: string } }>(
     '/api/schemes/:id/eligibility',
     {
-      preHandler:
-        typeof (app as unknown as { authenticate?: unknown }).authenticate ===
-        'function'
-          ? (app as FastifyInstance & {
-              authenticate: (
-                ...args: unknown[]
-              ) => unknown;
-            }).authenticate
-          : undefined,
+      preHandler: async (request, reply) => {
+        const fn = (app as FastifyInstance & {
+          authenticate?: (
+            r: FastifyRequest,
+            rep: FastifyReply,
+          ) => Promise<void>;
+        }).authenticate;
+        if (typeof fn === 'function') {
+          await fn(request, reply);
+          return;
+        }
+        // Test-mode fallback: when the auth plugin isn't wired (unit tests
+        // that drive the route directly via `app.inject`), we allow the
+        // request through so the route handler can read a pre-populated
+        // `request.user`. The handler itself rejects with 401 when no
+        // user is attached, preserving the production semantics.
+      },
     },
     async (request, reply) => {
       const { id } = request.params;
@@ -813,6 +829,12 @@ export function registerSchemesRoutes(
           .code(200)
           .send({ schemeId: id, eligibility: resolution.result });
       }
+      // Log the discriminator so production tells us which case fired
+      // — these used to be silent nulls and were impossible to triage.
+      request.log.info(
+        { schemeId: id, userId, reason: resolution.reason },
+        'eligibility resolved to null',
+      );
       return reply.code(200).send({
         schemeId: id,
         eligibility: null,
