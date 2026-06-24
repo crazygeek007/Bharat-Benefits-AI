@@ -1,8 +1,51 @@
 import 'dotenv/config';
 import { buildApp } from './app';
 import { startDailyScheduler, stopDailyScheduler } from './workers/daily-scheduler';
+import prisma from './lib/prisma';
+import {
+  HelpfulnessMonitor,
+  ObservabilityService,
+  PrismaAIQueryLogStore,
+  PrismaEvaluationRunStore,
+  PrismaFeedbackStore,
+} from './services/ai-observability';
 
-const fastify = buildApp();
+/**
+ * Construct the AI observability service from production Prisma stores
+ * so the citizen feedback endpoint and admin observability dashboards
+ * have a real backing service. Returning a singleton here keeps the
+ * helpfulness monitor / tracer state coherent across HTTP requests.
+ *
+ * The query-log store is currently only written-to once the assistant
+ * is instrumented (follow-up work) — the feedback endpoint, the
+ * helpfulness rollup, and the evaluation-run listing already work end
+ * to end against the existing Prisma tables.
+ */
+function buildObservabilityService(): ObservabilityService {
+  // The Prisma client surface is wider than the dedicated store
+  // interfaces; the Prisma-backed store classes only consume the
+  // narrow subset they need, so a plain cast is sound here.
+  const queryLogStore = new PrismaAIQueryLogStore(
+    prisma as unknown as ConstructorParameters<typeof PrismaAIQueryLogStore>[0],
+  );
+  const feedbackStore = new PrismaFeedbackStore(
+    prisma as unknown as ConstructorParameters<typeof PrismaFeedbackStore>[0],
+  );
+  const evaluationRunStore = new PrismaEvaluationRunStore(
+    prisma as unknown as ConstructorParameters<typeof PrismaEvaluationRunStore>[0],
+  );
+  const helpfulnessMonitor = new HelpfulnessMonitor(feedbackStore);
+  return new ObservabilityService({
+    queryLogStore,
+    feedbackStore,
+    helpfulnessMonitor,
+    evaluationRunStore,
+  });
+}
+
+const observabilityService = buildObservabilityService();
+
+const fastify = buildApp({ observabilityService });
 
 /**
  * Drain in-flight requests, close the HTTP server, then disconnect every

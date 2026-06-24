@@ -5,6 +5,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 
 interface SourceCitation {
   schemeId: string;
@@ -414,6 +415,10 @@ function MessageBubble({ message }: { message: AssistantMessage }) {
             </div>
           </div>
         )}
+
+        {!isUser && message.traceId && (
+          <FeedbackWidget traceId={message.traceId} />
+        )}
       </div>
     </div>
   );
@@ -459,5 +464,125 @@ function Dot({ delay }: { delay: string }) {
         animationDelay: delay,
       }}
     />
+  );
+}
+
+/**
+ * Helpful / unhelpful rating widget shown under each assistant response
+ * (Req 21.3). Posts to `POST /api/assistant/feedback` with the bearer
+ * token from the active NextAuth session — the route requires auth.
+ *
+ * The widget collapses to a thank-you note after submission so the
+ * citizen can't accidentally double-rate. We deliberately do NOT
+ * render anything when the user is signed-out: feedback collection
+ * relies on having a userId to attribute the rating to.
+ */
+function FeedbackWidget({ traceId }: { traceId: string }) {
+  const { data: session, status } = useSession();
+  const [submitted, setSubmitted] = useState<'helpful' | 'unhelpful' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  if (status !== 'authenticated') return null;
+
+  async function rate(rating: 'helpful' | 'unhelpful') {
+    if (busy || submitted) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const token = (session as unknown as { backendToken?: string })?.backendToken;
+      if (!token) {
+        setError('Sign in again to leave feedback.');
+        return;
+      }
+      const backendUrl =
+        process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+      const res = await fetch(`${backendUrl}/api/assistant/feedback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ traceId, rating }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.message || `Couldn't record rating (${res.status})`);
+        return;
+      }
+      setSubmitted(rating);
+    } catch {
+      setError('Network error — try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <p
+        style={{
+          margin: '10px 0 0',
+          fontSize: 12,
+          color: '#71717a',
+        }}
+      >
+        Thanks for the feedback.
+      </p>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 12,
+        color: '#71717a',
+      }}
+    >
+      <span>Was this helpful?</span>
+      <button
+        type="button"
+        aria-label="Rate this response helpful"
+        disabled={busy}
+        onClick={() => rate('helpful')}
+        style={{
+          padding: '4px 10px',
+          background: '#fff',
+          border: '1px solid #e4e4e7',
+          borderRadius: 8,
+          fontSize: 13,
+          cursor: busy ? 'not-allowed' : 'pointer',
+          color: '#15633a',
+        }}
+      >
+        👍 Helpful
+      </button>
+      <button
+        type="button"
+        aria-label="Rate this response unhelpful"
+        disabled={busy}
+        onClick={() => rate('unhelpful')}
+        style={{
+          padding: '4px 10px',
+          background: '#fff',
+          border: '1px solid #e4e4e7',
+          borderRadius: 8,
+          fontSize: 13,
+          cursor: busy ? 'not-allowed' : 'pointer',
+          color: '#b1232b',
+        }}
+      >
+        👎 Not helpful
+      </button>
+      {error && (
+        <span role="alert" style={{ color: '#dc2626' }}>
+          {error}
+        </span>
+      )}
+    </div>
   );
 }

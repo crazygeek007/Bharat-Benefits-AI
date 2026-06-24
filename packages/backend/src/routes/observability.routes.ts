@@ -33,18 +33,36 @@ export function registerObservabilityRoutes(
 ): void {
   const { service } = options;
   const adminGuard = options.requireAdminPreHandler ?? requireAdmin();
-  const authenticatePreHandler =
-    typeof (app as unknown as { authenticate?: unknown }).authenticate === 'function'
-      ? (app as FastifyInstance & { authenticate: (...args: unknown[]) => unknown }).authenticate
-      : undefined;
 
-  const adminPreHandlers = authenticatePreHandler
-    ? [authenticatePreHandler, adminGuard]
-    : [adminGuard];
+  /**
+   * Resolves `app.authenticate` at request time rather than at route-
+   * registration time. Fastify decorates the instance via fastify-plugin
+   * asynchronously, so reading `app.authenticate` here would return
+   * `undefined` and silently disable the auth check for every request
+   * — same shape of bug we just fixed in the eligibility route.
+   */
+  const lazyAuthenticate = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<void> => {
+    const fn = (app as FastifyInstance & {
+      authenticate?: (
+        r: FastifyRequest,
+        rep: FastifyReply,
+      ) => Promise<void>;
+    }).authenticate;
+    if (typeof fn === 'function') {
+      await fn(request, reply);
+      return;
+    }
+    // Test-mode fallback: tests pre-populate `request.user` via an
+    // `onRequest` hook and don't register the auth plugin. Fall through
+    // and let the route handler / admin guard enforce auth via the
+    // resulting `request.user` shape.
+  };
 
-  const authPreHandlers = authenticatePreHandler
-    ? [authenticatePreHandler]
-    : [];
+  const adminPreHandlers = [lazyAuthenticate, adminGuard];
+  const authPreHandlers = [lazyAuthenticate];
 
   // ── Citizen feedback (Req 21.3) ─────────────────────────────────────────
   app.post<{
