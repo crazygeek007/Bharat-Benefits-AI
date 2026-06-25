@@ -8,6 +8,13 @@
  *   1. Retrieve top-K relevant chunks from Pinecone (semantic search)
  *   2. Hydrate scheme metadata (source URL, last updated date)
  *   3. Generate response via Gemini with conversational context
+ *
+ * If an `ObservabilityService` is supplied the route also writes a
+ * minimal `AssistantQueryLog` row for every successful answer so the
+ * downstream feedback endpoint (Req 21.3) has a foreign-key target.
+ * Without this hook, citizen ratings 500 with an FK violation because
+ * `AssistantResponseFeedback.traceId` references `AssistantQueryLog`.
+ * The write is best-effort — a log failure must not break the chat.
  */
 
 import type { FastifyInstance } from 'fastify';
@@ -20,10 +27,18 @@ import {
 import { getSchemeIndex, getSchemeNamespace } from '../lib/vectordb';
 import { getGeminiChatClient, createGeminiEmbeddingsClient } from '../lib/gemini';
 import prisma from '../lib/prisma';
+import type { ObservabilityService } from '../services/ai-observability';
 
 export interface RegisterAssistantRoutesOptions {
   /** Override the assistant instance — useful for tests. */
   assistant?: SchemeAssistant;
+  /**
+   * Optional observability service. When supplied the route persists an
+   * `AssistantQueryLog` row for every answered query so feedback writes
+   * have a foreign-key target and the admin observability rollups have
+   * data to aggregate.
+   */
+  observabilityService?: ObservabilityService;
 }
 
 let cachedAssistant: SchemeAssistant | null = null;
@@ -58,6 +73,8 @@ export function registerAssistantRoutes(
   app: FastifyInstance,
   options: RegisterAssistantRoutesOptions = {},
 ): void {
+  const observabilityService = options.observabilityService;
+
   app.post<{
     Body: {
       query?: unknown;
@@ -81,6 +98,8 @@ export function registerAssistantRoutes(
         });
       }
 
+      const startedAt = Date.now();
+
       try {
         const assistant = options.assistant ?? getDefaultAssistant();
         const response = await assistant.answerQuery(
@@ -88,6 +107,35 @@ export function registerAssistantRoutes(
           sessionId,
           language,
         );
+
+        // Best-effort query-log write so feedback endpoints have an FK
+        // target. The current SchemeAssistant doesn't expose retrieved
+        // chunks to callers, so we record an empty array — the rollup
+        // routes degrade gracefully on missing chunks (Req 21.2).
+        if (observabilityService) {
+          const durationMs = Date.now() - startedAt;
+          observabilityService
+            .recordAssistantQuery({
+              traceId: response.traceId,
+              sessionId,
+              userId: request.user?.sub ?? null,
+              query,
+              response: {
+                answer: response.answer,
+                sources: response.sources,
+                language: response.language,
+                traceId: response.traceId,
+              },
+              retrievedChunks: [],
+              durationMs,
+            })
+            .catch((err: unknown) => {
+              request.log.warn(
+                { err, traceId: response.traceId },
+                'failed to persist assistant query log',
+              );
+            });
+        }
 
         return reply.code(200).send({
           answer: response.answer,

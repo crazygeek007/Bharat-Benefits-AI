@@ -124,7 +124,12 @@ function compositeKey(traceId: string, userId: string | null): string {
 export interface FeedbackPrismaClient {
   assistantResponseFeedback: {
     upsert(args: {
-      where: { traceId_userId: { traceId: string; userId: string | null } };
+      where: {
+        uq_assistant_response_feedback_trace_user: {
+          traceId: string;
+          userId: string | null;
+        };
+      };
       create: AIQueryFeedback;
       update: Partial<AIQueryFeedback>;
     }): Promise<AIQueryFeedback>;
@@ -149,8 +154,18 @@ export class PrismaFeedbackStore implements FeedbackStore {
       comment: input.comment ?? null,
       createdAt: now,
     };
+    // The compound unique key carries the explicit `name`
+    // `uq_assistant_response_feedback_trace_user` from schema.prisma, so
+    // Prisma surfaces it under that key on the where input — using the
+    // default `traceId_userId` name (what an unnamed unique would
+    // generate) causes a runtime validation error.
     return this.prisma.assistantResponseFeedback.upsert({
-      where: { traceId_userId: { traceId: input.traceId, userId: input.userId } },
+      where: {
+        uq_assistant_response_feedback_trace_user: {
+          traceId: input.traceId,
+          userId: input.userId,
+        },
+      },
       create: row,
       update: {
         rating: input.rating,

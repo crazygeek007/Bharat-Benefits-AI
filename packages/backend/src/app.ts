@@ -135,7 +135,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerProfileRoutes(fastify);
     registerDashboardRoutes(fastify);
     registerNotificationsRoutes(fastify);
-    registerAssistantRoutes(fastify);
+    registerAssistantRoutes(fastify, {
+      observabilityService: options.observabilityService,
+    });
   }
 
   // Public scheme browsing routes (Requirement 2). Registered regardless of
