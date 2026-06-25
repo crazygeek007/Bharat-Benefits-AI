@@ -248,6 +248,9 @@ async function expandSeedsViaSitemaps(
     const { validateSource } = await import(
       '../services/crawler/source-validator'
     );
+    const { UrlPatternClassifier } = await import(
+      '../services/crawler/page-classifier'
+    );
 
     const sitemapSeeds = resolveSitemapSeeds(seedUrls);
     const httpFetcher = new PoliteHttpFetcher({ delayPerHostMs: 1500 });
@@ -270,15 +273,48 @@ async function expandSeedsViaSitemaps(
       validateDomain: validateSource,
       logger: discoveryLogger,
     });
+
+    // Sitemap entries include every URL the portal publishes — disclaimer,
+    // FAQs, tourism index, etc. Sending all of those into the extraction
+    // pipeline wastes the Gemini embedding budget AND floods the failure
+    // log because the mandatory-field enforcer correctly rejects non-
+    // scheme pages. Filter through the URL-pattern classifier first so
+    // only URLs likely to be scheme pages reach the orchestrator.
+    const classifier = new UrlPatternClassifier();
+    const filtered: string[] = [];
+    const classificationBuckets = {
+      scheme: 0,
+      listing: 0,
+      ministry: 0,
+      ignore: 0,
+      unknown: 0,
+    };
+    for (const entry of result.urls) {
+      const verdict = classifier.classify(entry.url);
+      classificationBuckets[verdict.type]++;
+      // Only forward URLs the URL-pattern classifier confidently
+      // identified as scheme pages. `unknown` could be either way; the
+      // current cost (Gemini embeddings + Pinecone writes) of running
+      // each through the full pipeline is high enough that we
+      // deliberately bias conservative. Once we have data on what the
+      // `unknown` bucket actually contains we can extend
+      // URL_PATTERN_RULES.
+      if (verdict.type === 'scheme' && verdict.confidence >= 0.7) {
+        filtered.push(entry.url);
+      }
+    }
+
     logger.info('Sitemap discovery complete', {
       sitemapSeeds: sitemapSeeds.length,
       sitemapsParsed: result.sitemapsParsed,
       sitemapFailures: result.sitemapFailures,
       urlsFound: result.urls.length,
+      urlsAfterClassifier: filtered.length,
+      classificationBuckets,
       rejectedByDomain: result.rejectedByDomain,
       perHost: result.perHost,
     });
-    return result.urls.map((u) => u.url);
+    return filtered;
   } catch (err) {
     logger.error('Sitemap discovery layer failed; falling back to other paths', {
       err: err instanceof Error ? err.message : String(err),
