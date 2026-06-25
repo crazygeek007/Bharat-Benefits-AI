@@ -9,6 +9,14 @@ import {
   PrismaEvaluationRunStore,
   PrismaFeedbackStore,
 } from './services/ai-observability';
+import { startDailyCrawlSchedule } from './workers/daily-crawl.worker';
+import { ChangeDetectorService } from './services/change-detector/change-detector';
+import {
+  InMemorySourceFailureStore,
+  createChangeDetectorAdapter,
+} from './services/crawler/crawler-pipeline-integration';
+import { buildProductionCrawlerAdapters } from './services/crawler/prisma-adapters';
+import { createSchemeIndexer } from './services/crawler/scheme-indexer';
 
 /**
  * Construct the AI observability service from production Prisma stores
@@ -48,6 +56,56 @@ const observabilityService = buildObservabilityService();
 const fastify = buildApp({ observabilityService });
 
 /**
+ * Lazy handle to the daily crawl scheduler — populated only when
+ * `ENABLE_DAILY_CRAWL=true` so the gracefulShutdown hook can stop it
+ * cleanly without referencing it when the worker never started.
+ */
+let stopDailyCrawl: (() => void) | null = null;
+
+/**
+ * Construct the daily crawler with its production dependency graph
+ * wired in: Prisma persistence + compatibility store, Pinecone-backed
+ * vector indexer, Elasticsearch/Postgres-FTS search indexer, and a
+ * change detector that fans out citizen notifications when scheme
+ * fields drift.
+ *
+ * Returns a `stop()` function. The caller decides whether to start —
+ * see the `ENABLE_DAILY_CRAWL` env gate below. Off by default because
+ * the crawler writes to the catalogue; flipping the flag must be a
+ * conscious operations decision, not the side-effect of a deploy.
+ */
+function startCrawler(): () => void {
+  const schemeIndexer = createSchemeIndexer();
+  const changeDetectorService = new ChangeDetectorService({
+    prisma: prisma as unknown as ConstructorParameters<
+      typeof ChangeDetectorService
+    >[0]['prisma'],
+  });
+  const adapters = buildProductionCrawlerAdapters({
+    // The Prisma generated client is a wider type than the focused
+    // adapter interfaces; the adapter constructors cast internally.
+    prisma: prisma as unknown as Parameters<
+      typeof buildProductionCrawlerAdapters
+    >[0]['prisma'],
+    schemeIndexer,
+  });
+  const changeDetector = createChangeDetectorAdapter({ changeDetectorService });
+  // Single-instance source-failure tracking. Backed by Prisma when we
+  // eventually horizontally-scale the crawler; in-memory is correct as
+  // long as `DISABLE_SCHEDULER` keeps the cron on a single replica.
+  const sourceFailureStore = new InMemorySourceFailureStore();
+  void sourceFailureStore;
+
+  return startDailyCrawlSchedule({
+    persistence: adapters.persistence,
+    vectorIndexer: adapters.vectorIndexer,
+    searchIndexer: adapters.searchIndexer,
+    compatibilityStore: adapters.compatibilityStore,
+    changeDetector,
+  });
+}
+
+/**
  * Drain in-flight requests, close the HTTP server, then disconnect every
  * external client. The orchestration is best-effort: each disconnect runs
  * regardless of whether prior ones succeeded so a single misbehaving
@@ -60,6 +118,10 @@ async function gracefulShutdown(signal: NodeJS.Signals): Promise<void> {
 
   // Stop background jobs first so they don't fire mid-shutdown.
   stopDailyScheduler();
+  if (stopDailyCrawl) {
+    stopDailyCrawl();
+    stopDailyCrawl = null;
+  }
 
   // 1. Stop accepting new connections, wait for in-flight requests.
   await fastify.close().catch((err) => {
@@ -130,6 +192,21 @@ async function start(): Promise<void> {
       startDailyScheduler();
     } else {
       fastify.log.info('Daily scheduler disabled by DISABLE_SCHEDULER env var');
+    }
+
+    // The daily crawler is opt-in (env-gated) because it writes to the
+    // catalogue and orchestrates Pinecone / Postgres updates. Operators
+    // flip ENABLE_DAILY_CRAWL=true after they've curated the source URL
+    // list and verified admin review tooling is in place.
+    if (process.env.ENABLE_DAILY_CRAWL === 'true') {
+      try {
+        stopDailyCrawl = startCrawler();
+        fastify.log.info('Daily crawler scheduled (24h interval, opt-in via ENABLE_DAILY_CRAWL)');
+      } catch (err) {
+        // Don't crash the API just because the crawler wiring tripped —
+        // surface the error and continue serving traffic.
+        fastify.log.error({ err }, 'Failed to start daily crawler');
+      }
     }
   } catch (err) {
     fastify.log.error(err);
