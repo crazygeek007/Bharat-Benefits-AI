@@ -164,7 +164,31 @@ export async function runDailyCrawl(
 
   const urls = resolveSourceUrls(options);
 
-  // Discovery mode: when CRAWLER_LINK_DISCOVERY=true, expand seed URLs
+  // Discovery mode (sitemap): when CRAWLER_SITEMAP_DISCOVERY=true,
+  // expand seeds by walking each portal's sitemap.xml graph. Sitemap
+  // XML files often get CDN special-case treatment from the same
+  // portals that 403 regular HTML scrapes, so this can yield URL
+  // discovery even from datacenter IPs that the HTML discovery layer
+  // can't reach. Independent of the link-discovery flag — they can
+  // run together (sitemap first, then any URLs the classifier sends
+  // through the HTML pipeline).
+  if (process.env.CRAWLER_SITEMAP_DISCOVERY === 'true') {
+    const sitemapUrls = await expandSeedsViaSitemaps(urls, logger);
+    if (sitemapUrls.length > 0) {
+      logger.info('Sitemap discovery yielded scheme URLs', {
+        seedCount: urls.length,
+        schemeUrlCount: sitemapUrls.length,
+      });
+      const merged = Array.from(new Set([...urls, ...sitemapUrls]));
+      logger.info('Starting daily crawl', { sourceCount: merged.length });
+      const result = await orchestrator.executeDailyCrawl(merged);
+      logCompletion(logger, merged, result);
+      return result;
+    }
+    logger.warn('Sitemap discovery returned no URLs; trying other paths');
+  }
+
+  // Discovery mode (link-graph): when CRAWLER_LINK_DISCOVERY=true, expand seed URLs
   // by crawling each as an entry point. The discovery orchestrator
   // walks the link graph (depth 3, per-host budget 500), classifies
   // each page, and hands confirmed scheme URLs back to the main
@@ -195,6 +219,72 @@ export async function runDailyCrawl(
   const result = await orchestrator.executeDailyCrawl(urls);
   logCompletion(logger, urls, result);
   return result;
+}
+
+/**
+ * Run the sitemap-discovery layer against the supplied seed URLs and
+ * return the list of URLs declared in the portals' sitemap.xml files.
+ * Best-effort — a sitemap fetch failure on one portal does not stop
+ * the others, and a total failure returns an empty list (the caller
+ * then falls through to other discovery paths or the seed-only crawl).
+ *
+ * Sitemap XML endpoints often get CDN special-case treatment so
+ * search engines can index the site, which is why this path can
+ * sometimes work from datacenter IPs that the HTML scrape layer
+ * can't reach. There's no guarantee — we'll see in production whether
+ * a given portal's sitemap is reachable from Render's IP range.
+ */
+async function expandSeedsViaSitemaps(
+  seedUrls: string[],
+  logger: OrchestratorLogger,
+): Promise<string[]> {
+  try {
+    const { discoverFromSitemaps, resolveSitemapSeeds } = await import(
+      '../services/crawler/sitemap-discovery'
+    );
+    const { PoliteHttpFetcher } = await import(
+      '../services/crawler/polite-http-fetcher'
+    );
+    const { validateSource } = await import(
+      '../services/crawler/source-validator'
+    );
+
+    const sitemapSeeds = resolveSitemapSeeds(seedUrls);
+    const httpFetcher = new PoliteHttpFetcher({ delayPerHostMs: 1500 });
+    const sitemapFetcher = {
+      async fetch(url: string) {
+        const response = await httpFetcher.fetch(url);
+        return { body: response.html, finalUrl: response.finalUrl };
+      },
+    };
+
+    const discoveryLogger = {
+      info: logger.info,
+      warn: logger.warn,
+    };
+
+    const result = await discoverFromSitemaps(sitemapSeeds, sitemapFetcher, {
+      maxSitemapsPerHost: 50,
+      maxUrls: 5000,
+      maxDepth: 5,
+      validateDomain: validateSource,
+      logger: discoveryLogger,
+    });
+    logger.info('Sitemap discovery complete', {
+      sitemapSeeds: sitemapSeeds.length,
+      sitemapsParsed: result.sitemapsParsed,
+      sitemapFailures: result.sitemapFailures,
+      urlsFound: result.urls.length,
+      rejectedByDomain: result.rejectedByDomain,
+      perHost: result.perHost,
+    });
+    return result.urls.map((u) => u.url);
+  } catch (err) {
+    logger.error('Sitemap discovery layer failed; falling back to other paths', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
 }
 
 /**
