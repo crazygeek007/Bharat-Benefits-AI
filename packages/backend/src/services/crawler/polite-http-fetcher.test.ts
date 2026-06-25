@@ -45,6 +45,24 @@ describe('parseRobotsTxt', () => {
     expect(result.rules).toEqual([{ prefix: '/admin/', allow: false }]);
   });
 
+  it('extracts the bot identifier from a browser-prefixed UA for robots matching', () => {
+    // Real-world UA we send in production: browser prefix + our token
+    // inside the `compatible;` clause. The parser should still
+    // recognise the BharatBenefitsAI-Crawler group, not fall through
+    // to the wildcard.
+    const body = `
+      User-agent: *
+      Disallow: /
+
+      User-agent: BharatBenefitsAI-Crawler
+      Disallow: /admin/
+    `;
+    const ua =
+      'Mozilla/5.0 (compatible; BharatBenefitsAI-Crawler/1.0; +https://x.indevs.in/about) Chrome/126.0.0.0';
+    const result = parseRobotsTxt(body, ua);
+    expect(result.rules).toEqual([{ prefix: '/admin/', allow: false }]);
+  });
+
   it('ignores comments and unknown directives', () => {
     const body = `
       # Just a comment

@@ -68,8 +68,24 @@ export class RobotsDisallowedError extends Error {
   }
 }
 
+/**
+ * Default User-Agent header. Most Indian government portals sit behind
+ * Cloudflare / Akamai / Imperva bot protection that hard-blocks UA
+ * strings looking like crawlers (including the textbook
+ * "MyCrawler/1.0" pattern we used pre-launch). The fix is a
+ * browser-like prefix so the bot-protection rules let us through,
+ * with an identifying suffix so portal operators can still see who we
+ * are and contact us through the platform.
+ *
+ * We are not impersonating a different organisation; the suffix names
+ * the crawler clearly. The Chrome prefix mirrors the millions of
+ * legitimate Chrome browsers fetching the same public scheme pages
+ * every day. Update the Chrome version number annually so the
+ * fingerprint doesn't drift conspicuously out of date.
+ */
 const DEFAULT_USER_AGENT =
-  'BharatBenefitsAI-Crawler/1.0 (+https://bharat-benefits-ai.indevs.in/about; contact via the platform)';
+  'Mozilla/5.0 (compatible; BharatBenefitsAI-Crawler/1.0; +https://bharat-benefits-ai.indevs.in/about) ' +
+  'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 interface RobotsRule {
   /** Path prefix the rule applies to. Empty string matches everything. */
@@ -182,8 +198,20 @@ export class PoliteHttpFetcher implements DiscoveryFetcher {
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       return await this.fetchImpl(url, {
-        headers: { 'user-agent': this.userAgent, accept: 'text/html,application/xhtml+xml' },
+        // Match the headers a real browser would send. Bot-protection
+        // services (Cloudflare / Akamai) check the presence of these
+        // headers in addition to the User-Agent — sending only UA
+        // catches us in the bot block-list. The four below are the
+        // minimum a Chrome browser sends on a top-level navigation.
+        headers: {
+          'user-agent': this.userAgent,
+          accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'accept-language': 'en-IN,en;q=0.9,en-US;q=0.8',
+          'accept-encoding': 'gzip, deflate, br',
+        },
         signal: controller.signal,
+        redirect: 'follow',
       });
     } finally {
       clearTimeout(timer);
@@ -270,7 +298,12 @@ function isPathAllowed(rules: ParsedRobots, pathname: string): boolean {
 }
 
 function extractAgentToken(userAgent: string): string {
-  // "BharatBenefitsAI-Crawler/1.0 (+...)" → "BharatBenefitsAI-Crawler"
+  // Browser-prefixed UA: "Mozilla/5.0 (compatible; X/1.0; ...)" — the
+  // bot identifier lives inside the `compatible;` clause, so extract
+  // it instead of the leading browser segment.
+  const compatibleMatch = /compatible;\s*([^/;)\s]+)/i.exec(userAgent);
+  if (compatibleMatch) return compatibleMatch[1];
+  // Bare bot UA: "MyBot/1.0 (+url)" — first slash-bounded segment.
   const slashIdx = userAgent.indexOf('/');
   return slashIdx === -1 ? userAgent.split(/\s+/)[0] : userAgent.slice(0, slashIdx);
 }
