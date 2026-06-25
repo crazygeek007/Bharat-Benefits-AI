@@ -163,15 +163,116 @@ export async function runDailyCrawl(
   );
 
   const urls = resolveSourceUrls(options);
+
+  // Discovery mode: when CRAWLER_LINK_DISCOVERY=true, expand seed URLs
+  // by crawling each as an entry point. The discovery orchestrator
+  // walks the link graph (depth 3, per-host budget 500), classifies
+  // each page, and hands confirmed scheme URLs back to the main
+  // CrawlerOrchestrator via processScheme. The opt-in flag exists so
+  // operators can verify the new code path independently of the
+  // existing direct-URL crawler.
+  if (process.env.CRAWLER_LINK_DISCOVERY === 'true') {
+    const discoveryUrls = await expandSeedsViaDiscovery(urls, logger);
+    if (discoveryUrls.length > 0) {
+      logger.info('Discovery yielded scheme URLs', {
+        seedCount: urls.length,
+        schemeUrlCount: discoveryUrls.length,
+      });
+      // Hand the harvested scheme URLs to the existing orchestrator
+      // for the full ingest pipeline. The orchestrator's URL list is
+      // the union of the seed URLs (so single-page portals still work)
+      // and the discovery-harvested scheme URLs.
+      const merged = Array.from(new Set([...urls, ...discoveryUrls]));
+      logger.info('Starting daily crawl', { sourceCount: merged.length });
+      const result = await orchestrator.executeDailyCrawl(merged);
+      logCompletion(logger, merged, result);
+      return result;
+    }
+    logger.warn('Discovery returned no scheme URLs; falling back to seed-only crawl');
+  }
+
   logger.info('Starting daily crawl', { sourceCount: urls.length });
   const result = await orchestrator.executeDailyCrawl(urls);
+  logCompletion(logger, urls, result);
+  return result;
+}
 
-  // Classify failures by the reason string emitted by the orchestrator
-  // so operators can see at a glance whether a run failed due to bad
-  // sources (domain rejection), bad data (parse failures), or transport
-  // (HTTP errors). The orchestrator's `FailedSource.reason` is free-form
-  // text — we match well-known prefixes and bucket the rest as
-  // 'fetch-or-other'.
+/**
+ * Run the discovery layer against the supplied seed URLs and return
+ * the set of URLs the page classifier identified as scheme pages. Best
+ * effort — a discovery failure is logged but does NOT abort the run;
+ * we fall through to the seed-only crawl.
+ */
+async function expandSeedsViaDiscovery(
+  seedUrls: string[],
+  logger: OrchestratorLogger,
+): Promise<string[]> {
+  try {
+    const { DiscoveryOrchestrator } = await import('../services/crawler/discovery-orchestrator');
+    const { createDefaultClassifier } = await import('../services/crawler/page-classifier');
+    const { PoliteHttpFetcher } = await import('../services/crawler/polite-http-fetcher');
+    const { validateSource } = await import('../services/crawler/source-validator');
+
+    const schemeUrls: string[] = [];
+    const fetcher = new PoliteHttpFetcher({ delayPerHostMs: 1500 });
+
+    const discoveryLogger = {
+      info: logger.info,
+      warn: logger.warn,
+      error: logger.error,
+    };
+
+    const orchestrator = new DiscoveryOrchestrator(
+      {
+        fetcher,
+        classifier: createDefaultClassifier(),
+        validateDomain: validateSource,
+        schemeProcessor: async (url) => {
+          schemeUrls.push(url);
+        },
+        logger: discoveryLogger,
+      },
+      {
+        maxPagesPerHost: 500,
+        maxDepth: 3,
+      },
+    );
+
+    const result = await orchestrator.run(seedUrls);
+    logger.info('Discovery run complete', {
+      pagesCrawled: result.pagesCrawled,
+      schemesDiscovered: result.schemesDiscovered,
+      listingsTraversed: result.listingsTraversed,
+      ignored: result.ignored,
+      unknownPages: result.unknownPages,
+      rejectedByDomain: result.rejectedByDomain,
+      failures: result.failures,
+      durationMs: result.durationMs,
+    });
+    return schemeUrls;
+  } catch (err) {
+    logger.error('Discovery layer failed; continuing with seed-only crawl', {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+/**
+ * Shared completion logger used by both the seed-only and the
+ * discovery-augmented paths so the operations team sees the same
+ * structured fields regardless of which flow ran.
+ *
+ * Classifies `FailedSource.reason` into rejectedUrls (domain
+ * validation), parsingFailures (mandatory-field enforcement), and
+ * fetchOrOther (transport / unknown) so admins can triage a run at a
+ * glance without grepping the per-failure list.
+ */
+function logCompletion(
+  logger: OrchestratorLogger,
+  urls: string[],
+  result: CrawlResult,
+): void {
   const failureBuckets = {
     rejectedUrls: 0,
     parsingFailures: 0,
@@ -208,7 +309,6 @@ export async function runDailyCrawl(
     fetchOrOther: failureBuckets.fetchOrOther,
     durationMs: result.duration,
   });
-  return result;
 }
 
 /**
