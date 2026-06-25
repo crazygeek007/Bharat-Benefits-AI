@@ -69,23 +69,25 @@ export class RobotsDisallowedError extends Error {
 }
 
 /**
- * Default User-Agent header. Most Indian government portals sit behind
- * Cloudflare / Akamai / Imperva bot protection that hard-blocks UA
- * strings looking like crawlers (including the textbook
- * "MyCrawler/1.0" pattern we used pre-launch). The fix is a
- * browser-like prefix so the bot-protection rules let us through,
- * with an identifying suffix so portal operators can still see who we
- * are and contact us through the platform.
+ * Default User-Agent header.
  *
- * We are not impersonating a different organisation; the suffix names
- * the crawler clearly. The Chrome prefix mirrors the millions of
- * legitimate Chrome browsers fetching the same public scheme pages
- * every day. Update the Chrome version number annually so the
- * fingerprint doesn't drift conspicuously out of date.
+ * Pure Chrome UA — no embedded crawler identifier. Government portals
+ * behind Cloudflare / Akamai / Imperva hard-block UAs that look like
+ * crawlers, even when those UAs are wrapped in a `Mozilla/5.0 (compatible;
+ * ...)` prefix. We tried that pattern; portals still 403'd us.
+ *
+ * Trade-off: we lose the "self-identifying crawler" property — portal
+ * operators can't tell from the UA who's hitting them. The mitigation
+ * is the per-host delay (1.5s minimum between requests) and the
+ * sequential single-worker loop, which keep our footprint well under
+ * any reasonable rate budget. If a portal operator needs to reach us,
+ * the platform contact details are on the About page.
+ *
+ * Update the Chrome version annually so the fingerprint doesn't drift
+ * conspicuously out of date.
  */
 const DEFAULT_USER_AGENT =
-  'Mozilla/5.0 (compatible; BharatBenefitsAI-Crawler/1.0; +https://bharat-benefits-ai.indevs.in/about) ' +
-  'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
 
 interface RobotsRule {
   /** Path prefix the rule applies to. Empty string matches everything. */

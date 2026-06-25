@@ -107,7 +107,7 @@ function makeFakeFetch(map: Record<string, FakeHttpResponse>) {
 }
 
 describe('PoliteHttpFetcher', () => {
-  it('fetches HTML and sets the identifying user-agent header', async () => {
+  it('fetches HTML and sets a browser-like user-agent header', async () => {
     const { impl, calls } = makeFakeFetch({
       'https://x.gov.in/robots.txt': { status: 404, body: '' },
       'https://x.gov.in/scheme-a': { status: 200, body: '<html>A</html>' },
@@ -123,7 +123,12 @@ describe('PoliteHttpFetcher', () => {
     const realCall = calls.find((c) => c.url === 'https://x.gov.in/scheme-a');
     expect(realCall).toBeDefined();
     const headers = realCall?.init?.headers as Record<string, string>;
-    expect(headers['user-agent']).toMatch(/BharatBenefitsAI-Crawler/);
+    // Default UA is a pure Chrome string — gov-portal bot protection
+    // rejects anything that smells like a crawler, so we don't embed
+    // our crawler identifier in the UA.
+    expect(headers['user-agent']).toMatch(/Chrome\/\d+\.\d+\.\d+\.\d+/);
+    expect(headers['user-agent']).toMatch(/Mozilla\/5\.0/);
+    expect(headers['accept-language']).toBeDefined();
   });
 
   it('blocks a request that robots.txt disallows', async () => {
