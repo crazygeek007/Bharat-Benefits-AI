@@ -1,0 +1,103 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#   Daily crawler workflow.
+#
+#   Runs the same one-shot crawler pipeline as the in-process Render
+#   scheduler, but from GitHub-hosted runners. We moved execution off
+#   Render because Cloudflare-protected gov.in portals 403 Render's
+#   datacenter IP — GitHub's runners use a different IP range that the
+#   same portals serve normally (verified June 25 with curl).
+#
+#   The script writes directly to the production Postgres + Pinecone
+#   indices via DATABASE_URL / PINECONE_* secrets, then exits. The
+#   existing Render-side scheduler should be disabled
+#   (ENABLE_DAILY_CRAWL=false on Render) so we don't double-run.
+#
+#   Schedule: 21:30 UTC = 03:00 IST. Off-peak for both Indian gov
+#   portals and the live citizen traffic on the Render app.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Daily crawler
+
+on:
+  schedule:
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+    inputs:
+      sitemap_discovery:
+        description: "Enable sitemap-based discovery (true/false)"
+        required: false
+        default: "true"
+      link_discovery:
+        description: "Enable HTML link-graph discovery (true/false)"
+        required: false
+        default: "false"
+
+# Don't queue multiple runs against the production database — if a
+# scheduled run is already going and we trigger another manually, the
+# second one cancels the first rather than running concurrently and
+# fighting for the same upsert rows.
+concurrency:
+  group: crawler-production
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+        # `prisma generate` runs as a postinstall hook so the generated
+        # Prisma client is in place before the script imports it.
+
+      - name: Build shared package
+        # The backend imports `@bharat-benefits/shared` via project
+        # reference. Its `dist/` must exist before tsx can resolve the
+        # import on a fresh runner.
+        run: npm run build --workspace=packages/shared
+
+      - name: Run one-shot crawler
+        working-directory: packages/backend
+        env:
+          NODE_ENV: production
+
+          # ── Production data sinks ──────────────────────────────────
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_INDEX_NAME: ${{ secrets.PINECONE_INDEX_NAME }}
+          PINECONE_NAMESPACE: ${{ secrets.PINECONE_NAMESPACE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+          # ── Auth / encryption secrets the prisma module / Fastify
+          #    imports may initialise on load. Required for boot even
+          #    though the crawler itself doesn't authenticate users.
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          PROFILE_ENCRYPTION_KEY: ${{ secrets.PROFILE_ENCRYPTION_KEY }}
+
+          # ── Crawler flags. Tuneable per-run via workflow_dispatch
+          #    inputs, defaulting to the production-recommended values
+          #    (sitemap discovery on, link-graph discovery off because
+          #    it produces noisy 403 logs without commensurate yield).
+          CRAWLER_SOURCE_URLS: ${{ vars.CRAWLER_SOURCE_URLS }}
+          CRAWLER_SITEMAP_DISCOVERY: ${{ github.event.inputs.sitemap_discovery || 'true' }}
+          CRAWLER_LINK_DISCOVERY: ${{ github.event.inputs.link_discovery || 'false' }}
+
+          # ── Optional: pin a smaller log level so workflow logs stay
+          #    legible. Pino respects this via the worker's default
+          #    console logger.
+          LOG_LEVEL: info
+        run: npx tsx src/scripts/run-crawler-once.ts

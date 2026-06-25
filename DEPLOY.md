@@ -228,6 +228,30 @@ You said you want a full launch with real scheme data. The platform code is buil
 ### Scheduler
 The daily crawl + deadline scan run inside the `bharat-backend` process by default. **Do not scale to >1 replica** without first setting `DISABLE_SCHEDULER=true` on all but one host — otherwise the crons fire N times per period.
 
+### Crawler — runs on GitHub Actions, not Render
+
+Cloudflare-protected gov.in portals 403 Render's datacenter IPs. To get around that, the daily crawl runs from GitHub-hosted runners (different IP range, served normally by the same portals). See `.github/workflows/crawler.yml`.
+
+**Set this once:**
+
+1. On Render, set `ENABLE_DAILY_CRAWL=false` so the in-process scheduler is dormant. The deadline-scan cron still runs there; only the crawler moves.
+2. In GitHub repo → Settings → Secrets and variables → Actions → New repository secret, add the secrets the workflow consumes:
+   - `DATABASE_URL` — your Render Postgres connection string (the one with `?sslmode=require`)
+   - `PINECONE_API_KEY`
+   - `PINECONE_INDEX_NAME` (e.g. `bharat-schemes`)
+   - `PINECONE_NAMESPACE` (e.g. `production`)
+   - `GEMINI_API_KEY`
+   - `JWT_SECRET`, `NEXTAUTH_SECRET`, `PROFILE_ENCRYPTION_KEY` — same values you use on Render
+3. Optional: under **Variables** (not secrets), set `CRAWLER_SOURCE_URLS` to override the built-in seed list.
+
+**To trigger a run:**
+
+- Scheduled: 21:30 UTC (03:00 IST) daily — automatic once secrets are in place.
+- Manual: GitHub repo → Actions → "Daily crawler" → "Run workflow". You can toggle `sitemap_discovery` / `link_discovery` per-run from the dropdown.
+
+**Where the logs live:**
+Actions tab → pick the run → "Run one-shot crawler" step. Same structured fields (newSchemes, updatedSchemes, classificationBuckets, …) as the Render-side scheduler logged.
+
 ### Migrations
 New migrations ship automatically: `bharat-backend-migrate` runs before the web service rolls. If a migration fails, the deploy is rolled back and the old version keeps serving.
 
