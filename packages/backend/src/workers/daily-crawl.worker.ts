@@ -49,10 +49,32 @@ import {
  * explicitly. Treat this list as the safe fallback, not the source of
  * truth.
  */
+/**
+ * Default seed URLs the crawler consults when neither the env var nor
+ * the call-site option supplies one. These MUST be official entry-points
+ * onto trusted government portals — the domain allow-list
+ * (`*.gov.in` / `*.nic.in` plus configured portals in `source-validator.ts`)
+ * rejects anything else, so adding a non-government URL here would
+ * silently no-op rather than expand the crawl.
+ *
+ * Operators override via `CRAWLER_SOURCE_URLS` (comma-separated) on
+ * Render without redeploying the backend. Keep the production list
+ * curated by hand — broad seeds with a deep link-discovery pass (not
+ * yet implemented) will increase the per-run footprint significantly.
+ */
 export const DEFAULT_CRAWLER_SOURCES: readonly string[] = [
-  'https://www.india.gov.in/spotlight/schemes',
+  // myScheme — central catalogue maintained by NeGD / DigiLocker. Most
+  // comprehensive single index of central + state schemes.
+  'https://www.myscheme.gov.in/',
+  // India.gov.in — the official "My Government → Schemes" index.
+  'https://www.india.gov.in/my-government/schemes',
+  // Services portal — public-service endpoints, includes scheme links.
+  'https://services.india.gov.in/',
+  // Scholarships portal — sole authoritative source for NSP schemes.
   'https://scholarships.gov.in/',
-  'https://pmkisan.gov.in/',
+  // iGOD (India Govt Open Data) — open dataset listings, occasionally
+  // links scheme documentation and source records.
+  'https://igod.gov.in/',
 ];
 
 export interface DailyCrawlWorkerOptions {
@@ -143,10 +165,47 @@ export async function runDailyCrawl(
   const urls = resolveSourceUrls(options);
   logger.info('Starting daily crawl', { sourceCount: urls.length });
   const result = await orchestrator.executeDailyCrawl(urls);
+
+  // Classify failures by the reason string emitted by the orchestrator
+  // so operators can see at a glance whether a run failed due to bad
+  // sources (domain rejection), bad data (parse failures), or transport
+  // (HTTP errors). The orchestrator's `FailedSource.reason` is free-form
+  // text — we match well-known prefixes and bucket the rest as
+  // 'fetch-or-other'.
+  const failureBuckets = {
+    rejectedUrls: 0,
+    parsingFailures: 0,
+    fetchOrOther: 0,
+  };
+  for (const failed of result.failedSources) {
+    const reason = (failed.reason ?? '').toLowerCase();
+    if (
+      reason.includes('source url') ||
+      reason.includes('domain') ||
+      reason.includes('invalid url')
+    ) {
+      failureBuckets.rejectedUrls++;
+    } else if (
+      reason.includes('mandatory') ||
+      reason.includes('missing field') ||
+      reason.includes('parse')
+    ) {
+      failureBuckets.parsingFailures++;
+    } else {
+      failureBuckets.fetchOrOther++;
+    }
+  }
+
   logger.info('Daily crawl completed', {
+    sourceCount: urls.length,
+    pagesCrawled: urls.length,
+    schemesDiscovered: result.newSchemes + result.updatedSchemes,
     newSchemes: result.newSchemes,
     updatedSchemes: result.updatedSchemes,
     failedSources: result.failedSources.length,
+    rejectedUrls: failureBuckets.rejectedUrls,
+    parsingFailures: failureBuckets.parsingFailures,
+    fetchOrOther: failureBuckets.fetchOrOther,
     durationMs: result.duration,
   });
   return result;

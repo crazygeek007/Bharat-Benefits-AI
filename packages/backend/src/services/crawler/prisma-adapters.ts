@@ -47,7 +47,12 @@ import type { IndexableScheme, SchemeIndexer } from './scheme-indexer';
 /** Minimal Prisma surface used by the persistence adapter. */
 export interface SchemePersistencePrisma {
   scheme: {
-    findFirst(args: { where: { sourceUrl: string } }): Promise<{ id: string } | null>;
+    findFirst(args: {
+      where: {
+        sourceUrl?: string;
+        name?: { equals?: string; mode?: 'insensitive' };
+      };
+    }): Promise<{ id: string } | null>;
     create(args: { data: Record<string, unknown> }): Promise<{ id: string }>;
     update(args: {
       where: { id: string };
@@ -58,6 +63,20 @@ export interface SchemePersistencePrisma {
     deleteMany(args: { where: { schemeId: string } }): Promise<unknown>;
     createMany(args: { data: Array<Record<string, unknown>> }): Promise<unknown>;
   };
+}
+
+/**
+ * Collapse a scheme name into a comparable canonical form so two URLs
+ * that point to the same scheme (e.g. a portal page and a deep link)
+ * are caught as duplicates. Lowercases, strips non-alphanumeric runs,
+ * collapses whitespace.
+ */
+export function normalizeSchemeName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 /**
@@ -87,7 +106,24 @@ export class PrismaSchemePersistence implements SchemePersistence {
       state,
       verified,
     } = record;
-    const existing = await this.prisma.scheme.findFirst({ where: { sourceUrl } });
+
+    // 1) Canonical match: same `sourceUrl` always maps to the same row.
+    // 2) Fallback match: case-insensitive name equality. Catches the
+    //    common pattern where a scheme is reachable via two official
+    //    URLs (portal index page vs deep link) and prevents duplicate
+    //    catalogue entries. The exact lower-case match is intentionally
+    //    conservative — a fuzzy comparator would risk collapsing
+    //    distinct schemes like "PM Kisan" and "PM Kisan Maan-Dhan".
+    const trimmedName = schemeObject.name.trim().replace(/\s+/g, ' ');
+    const existingByUrl = await this.prisma.scheme.findFirst({
+      where: { sourceUrl },
+    });
+    let existing = existingByUrl;
+    if (!existing && trimmedName.length > 0) {
+      existing = await this.prisma.scheme.findFirst({
+        where: { name: { equals: trimmedName, mode: 'insensitive' } },
+      });
+    }
 
     // SchemeObject (the crawler's output shape) covers the citizen-facing
     // content; DB-only attributes like benefitType / applicationMode are

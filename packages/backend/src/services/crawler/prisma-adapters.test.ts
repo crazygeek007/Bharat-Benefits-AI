@@ -65,12 +65,23 @@ describe('PrismaSchemePersistence', () => {
     const updated: Array<{ where: { id: string }; data: Record<string, unknown> }> = [];
     const docsDeleted: Array<{ schemeId: string }> = [];
     const docsCreated: Array<Array<Record<string, unknown>>> = [];
-    let existingId: string | null = null;
+    const findFirstCalls: Array<unknown> = [];
+    let existingByUrlId: string | null = null;
+    let existingByNameId: string | null = null;
 
     const fake: SchemePersistencePrisma = {
       scheme: {
-        async findFirst() {
-          return existingId ? { id: existingId } : null;
+        async findFirst(args) {
+          findFirstCalls.push(args.where);
+          // Branch 1: lookup by sourceUrl (canonical key).
+          if ('sourceUrl' in args.where && args.where.sourceUrl !== undefined) {
+            return existingByUrlId ? { id: existingByUrlId } : null;
+          }
+          // Branch 2: fallback lookup by case-insensitive name equality.
+          if ('name' in args.where) {
+            return existingByNameId ? { id: existingByNameId } : null;
+          }
+          return null;
         },
         async create({ data }) {
           created.push(data);
@@ -99,8 +110,12 @@ describe('PrismaSchemePersistence', () => {
       updated,
       docsDeleted,
       docsCreated,
+      findFirstCalls,
       setExistingId(id: string | null) {
-        existingId = id;
+        existingByUrlId = id;
+      },
+      setExistingByNameId(id: string | null) {
+        existingByNameId = id;
       },
     };
   }
@@ -204,6 +219,58 @@ describe('PrismaSchemePersistence', () => {
     expect(row.applicationSteps).toEqual([
       { stepNumber: 1, action: 'Register', expectedOutcome: 'Account' },
     ]);
+  });
+
+  it('falls back to case-insensitive name match when no sourceUrl matches', async () => {
+    const harness = makeFakePrisma();
+    harness.setExistingId(null);
+    harness.setExistingByNameId('dup-id');
+    const store = new PrismaSchemePersistence(harness.fake);
+
+    const result = await store.upsertScheme(
+      makeIngestedRecord({
+        schemeObject: makeSchemeObject({ name: '  PM Kisan Samman Nidhi  ' }),
+        sourceUrl: 'https://gov.in/different-url',
+      }),
+    );
+
+    // The duplicate-by-name branch should treat the row as an update,
+    // not a create, so we don't add a second catalogue entry for the
+    // same scheme reachable via two URLs.
+    expect(result).toEqual({ schemeId: 'dup-id', created: false });
+    expect(harness.created).toHaveLength(0);
+    expect(harness.updated).toHaveLength(1);
+
+    // Verify the fallback query used case-insensitive equality on the
+    // trimmed name.
+    const nameLookup = harness.findFirstCalls.find(
+      (where) =>
+        typeof where === 'object' &&
+        where !== null &&
+        'name' in (where as Record<string, unknown>),
+    ) as { name: { equals: string; mode: string } };
+    expect(nameLookup.name).toEqual({
+      equals: 'PM Kisan Samman Nidhi',
+      mode: 'insensitive',
+    });
+  });
+
+  it('prefers sourceUrl match over name match when both would resolve', async () => {
+    const harness = makeFakePrisma();
+    harness.setExistingId('url-match');
+    harness.setExistingByNameId('name-match');
+    const store = new PrismaSchemePersistence(harness.fake);
+
+    const result = await store.upsertScheme(makeIngestedRecord());
+
+    expect(result.schemeId).toBe('url-match');
+    // The name-fallback lookup should NOT have run — sourceUrl already
+    // resolved a candidate.
+    const nameLookupHappened = harness.findFirstCalls.some(
+      (w) =>
+        typeof w === 'object' && w !== null && 'name' in (w as Record<string, unknown>),
+    );
+    expect(nameLookupHappened).toBe(false);
   });
 });
 
