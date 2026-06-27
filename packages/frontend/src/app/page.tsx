@@ -1,6 +1,25 @@
 import { MAIN_CONTENT_ID } from '../components/SkipLink';
 
 /**
+ * Force this page to render at request time rather than at build time.
+ *
+ * The hero stat reads from the backend's `/api/schemes` endpoint, and
+ * that endpoint is only reachable at runtime (Render's production URL),
+ * not from Vercel's build runner. Without `force-dynamic`, Next.js
+ * tries to pre-render the page during `next build`, the fetch fails,
+ * the build errors out — which is exactly what happened on the first
+ * deploy of this change.
+ *
+ * Trade-off: every homepage request now hits the backend instead of
+ * serving from the static cache. For a low-traffic landing page that's
+ * fine. If traffic grows the right move is a short-lived Redis cache
+ * around `/api/schemes?pageSize=1` so the backend gets at most one hit
+ * per minute regardless of page-view rate — not pre-rendering at build
+ * time, which would re-introduce stale counts.
+ */
+export const dynamic = 'force-dynamic';
+
+/**
  * Default scheme-count copy used when the backend fetch fails. We use
  * a vague "10+" rather than guessing the real number — operators will
  * see the failure in logs and a future render picks up the live count.
@@ -28,19 +47,31 @@ function getBackendBaseUrl(): string {
  * the `totalCount` field — no need to ship the full first-page payload
  * just to render a hero stat.
  *
- * Cached for 60 seconds via Next.js ISR (`next: { revalidate: 60 }`),
- * so the homepage is served from the static cache between refreshes
- * and the backend doesn't get hit on every page view.
+ * Wrapped in `force-dynamic` page rendering so this runs at request
+ * time (where the backend is reachable), not at build time (where it
+ * isn't). Backend response is itself cached for 60s via the
+ * `next: { revalidate: 60 }` hint, so high-frequency homepage hits
+ * don't fan out to a real fetch every time.
  *
  * Falls back to {@link SCHEME_COUNT_FALLBACK} on any error (network,
- * non-2xx response, malformed body) so a brief backend outage doesn't
- * break the homepage. The fallback is small enough that we'll never
- * accidentally show a number higher than the real catalogue.
+ * non-2xx response, malformed body, or anything Next.js's fetch
+ * wrapper might throw). The fallback is small enough that we'll
+ * never accidentally show a number higher than the real catalogue.
  */
 async function fetchSchemeCount(): Promise<number> {
+  // Belt and braces: if we're somehow running at build time and the
+  // backend URL still points to localhost (i.e. no BACKEND_URL env var
+  // was provided to the build), bail to the fallback without even
+  // attempting the fetch. Avoids surfacing a build-time ECONNREFUSED
+  // error to Next.js's static export step.
+  const baseUrl = getBackendBaseUrl();
+  if (baseUrl.includes('localhost') && process.env.NODE_ENV === 'production') {
+    return SCHEME_COUNT_FALLBACK;
+  }
+
   try {
     const res = await fetch(
-      `${getBackendBaseUrl()}/api/schemes?pageSize=1`,
+      `${baseUrl}/api/schemes?pageSize=1`,
       { next: { revalidate: 60 } },
     );
     if (!res.ok) return SCHEME_COUNT_FALLBACK;
