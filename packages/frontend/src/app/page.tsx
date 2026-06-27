@@ -54,17 +54,17 @@ export default function Home() {
           }}
         >
           <span style={{ display: 'inline-flex', width: 6, height: 6, background: '#10b981', borderRadius: '50%', boxShadow: '0 0 0 3px rgba(16, 185, 129, 0.2)' }} aria-hidden="true" />
-          Powered by Gemini AI · Verified gov sources
+          AI-Powered Welfare-Scheme Discovery Tool · Verified gov sources
         </div>
 
         <h1
           style={{
-            fontSize: 'clamp(40px, 7vw, 76px)',
+            fontSize: 'clamp(32px, 5vw, 56px)',
             fontWeight: 700,
-            lineHeight: 1,
-            letterSpacing: '-0.045em',
+            lineHeight: 1.1,
+            letterSpacing: '-0.035em',
             margin: '0 0 24px',
-            maxWidth: 900,
+            maxWidth: 820,
             marginInline: 'auto',
           }}
         >

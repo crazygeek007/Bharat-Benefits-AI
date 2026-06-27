@@ -308,11 +308,37 @@ a:hover {
 /* ─── Utility classes ──────────────────────────────────────────────── */
 
 .gradient-text {
-  background: var(--gradient);
+  /* Horizontal flow with a mirrored stop so the shimmer animation
+     loops seamlessly without a visible "snap" at the wrap point. */
+  background: linear-gradient(
+    90deg,
+    #6366f1 0%,
+    #8b5cf6 25%,
+    #d946ef 50%,
+    #8b5cf6 75%,
+    #6366f1 100%
+  );
+  background-size: 200% auto;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  animation: gradient-shimmer 8s linear infinite;
+}
+
+@keyframes gradient-shimmer {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* Users who've opted into reduced motion get the gradient frozen at
+   the starting position. The visual effect still reads as a gradient
+   — they just lose the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-text {
+    animation: none;
+  }
 }
 
 .glass {

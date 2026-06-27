@@ -58,7 +58,7 @@ export function AuthLayout({ title, subtitle, children }: AuthLayoutProps) {
         <div className="bb-auth-panel-top">
           <span className="bb-auth-panel-eyebrow">
             <span className="bb-auth-panel-eyebrow-dot" />
-            Powered by Gemini AI · Verified gov sources
+            AI-Powered Welfare-Scheme Discovery Tool · Verified gov sources
           </span>
           <h2 className="bb-auth-panel-heading">
             Government benefits, matched to your life.
