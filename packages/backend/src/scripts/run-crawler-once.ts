@@ -85,8 +85,29 @@ async function main(): Promise<void> {
 main()
   .catch((err) => {
     console.error('[crawler] one-shot crawl failed:', err);
-    process.exit(1);
+    process.exitCode = 1;
   })
   .finally(async () => {
+    // Close the Prisma pool before exit so the underlying TCP sockets
+    // are released cleanly. Without this, Postgres logs idle-in-tx
+    // warnings.
     await prisma.$disconnect();
+    // Pino's stdout sink is configured synchronously in the worker,
+    // but the runtime can still buffer the final line in Node's
+    // stream layer. Drain stdout/stderr before exiting so the
+    // GitHub Actions log captures the completion summary that
+    // followed the last sitemap-discovery log.
+    await drainStream(process.stdout);
+    await drainStream(process.stderr);
+    process.exit(process.exitCode ?? 0);
   });
+
+function drainStream(stream: NodeJS.WriteStream): Promise<void> {
+  return new Promise((resolve) => {
+    if (stream.writableLength === 0) {
+      resolve();
+      return;
+    }
+    stream.write('', () => resolve());
+  });
+}

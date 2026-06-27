@@ -692,17 +692,50 @@ function createConsoleLogger(): OrchestratorLogger {
   // Pino's default output is JSON, which keeps grep / Loki / CloudWatch
   // queries simple. We name the logger so production aggregators can
   // filter "logger=crawler" without parsing message strings.
+  //
+  // Synchronous destination is used because the crawler is a batch
+  // process. Async pino buffers log writes through sonic-boom; on a
+  // short-lived script (GitHub Actions one-shot run, in particular)
+  // the process exits before the buffer flushes and the completion
+  // logs go missing — we saw exactly that symptom on June 27. Sync
+  // mode adds a few hundred microseconds per log, which is irrelevant
+  // for a once-a-day crawl, and guarantees every line lands in the
+  // workflow log.
   try {
     // pino's CJS export is callable directly; the `.default` shape only
     // exists when interop layers (esModuleInterop) wrap the module. We
     // try both shapes so the worker stays portable across bundlers.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pinoModule = require('pino') as PinoFactory | { default: PinoFactory };
+    const pinoModule = require('pino') as
+      | (PinoFactory & { destination?: (opts: unknown) => unknown })
+      | { default: PinoFactory & { destination?: (opts: unknown) => unknown } };
     const factory: PinoFactory =
       typeof pinoModule === 'function'
         ? pinoModule
         : (pinoModule as { default: PinoFactory }).default;
-    const logger = factory({ name: 'crawler', level: process.env.LOG_LEVEL ?? 'info' });
+    const destination =
+      typeof pinoModule === 'function'
+        ? (pinoModule as { destination?: (opts: unknown) => unknown }).destination
+        : (
+            pinoModule as {
+              default: { destination?: (opts: unknown) => unknown };
+            }
+          ).default?.destination;
+    const sink =
+      typeof destination === 'function'
+        ? destination({ sync: true })
+        : undefined;
+    // pino's overloads include `(opts, destination)` but our minimal
+    // PinoFactory type only declares the single-arg form, so the cast
+    // below threads the destination through without dragging pino's
+    // full type definitions into this module.
+    const factoryWithSink = factory as unknown as (
+      opts: unknown,
+      dest?: unknown,
+    ) => PinoLikeLogger;
+    const logger = sink
+      ? factoryWithSink({ name: 'crawler', level: process.env.LOG_LEVEL ?? 'info' }, sink)
+      : factory({ name: 'crawler', level: process.env.LOG_LEVEL ?? 'info' });
     return {
       info: (msg, ctx) => logger.info(ctx ?? {}, msg),
       warn: (msg, ctx) => logger.warn(ctx ?? {}, msg),
