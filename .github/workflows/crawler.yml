@@ -94,7 +94,13 @@ jobs:
           #    it produces noisy 403 logs without commensurate yield).
           CRAWLER_SOURCE_URLS: ${{ vars.CRAWLER_SOURCE_URLS }}
           CRAWLER_SITEMAP_DISCOVERY: ${{ github.event.inputs.sitemap_discovery || 'true' }}
-          CRAWLER_LINK_DISCOVERY: ${{ github.event.inputs.link_discovery || 'false' }}
+          # Link discovery default flipped to ON: GitHub Actions runners
+          # aren't IP-blocked by the gov portals (verified June 27), so
+          # the link-graph layer can actually reach scheme detail pages
+          # this time around. With both layers on, sitemap discovery
+          # supplies the initial seed graph and link discovery follows
+          # in-portal links from any listings it produces.
+          CRAWLER_LINK_DISCOVERY: ${{ github.event.inputs.link_discovery || 'true' }}
 
           # ── Optional: pin a smaller log level so workflow logs stay
           #    legible. Pino respects this via the worker's default
