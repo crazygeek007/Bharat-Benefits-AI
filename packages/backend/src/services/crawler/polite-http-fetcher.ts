@@ -316,8 +316,24 @@ function agentMatches(robotsAgent: string, ourToken: string): boolean {
 }
 
 function defaultSleep(ms: number): Promise<void> {
+  // IMPORTANT: do NOT unref this timer.
+  //
+  // The per-host delay is the entire reason this fetcher exists.
+  // Unref'ing the timer means Node's event loop ignores it when
+  // deciding whether to drain — so if no fetch happens to be in
+  // flight when the discovery loop calls `await sleep(...)`, the
+  // event loop sees zero pending work, fires `beforeExit`, and the
+  // process exits mid-rate-limit. The awaiting Promise stays pending
+  // forever and the run silently aborts with success status.
+  //
+  // This bug bit us on the first multi-portal GitHub Actions run on
+  // June 27 — heartbeat traced the process exiting cleanly with no
+  // completion logs, no error, no perPortal block. The `await` on
+  // this Promise was the orphaned suspension point. Keeping the
+  // timer ref'd lets `await` behave the way every other Node
+  // delay-based primitive does: the loop stays alive until the
+  // timer fires.
   return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    if (typeof t.unref === 'function') t.unref();
+    setTimeout(resolve, ms);
   });
 }
