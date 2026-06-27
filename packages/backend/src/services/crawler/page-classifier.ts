@@ -87,6 +87,27 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     confidence: 0.99,
   },
 
+  // ── Homepage / portal-root ignore-as-scheme guard (high priority) ───────
+  // Without this, the orchestrator gleefully fetches a portal homepage,
+  // fails to find scheme fields in the marketing copy, and produces a
+  // noisy 'Missing mandatory fields' error. Homepages are listing pages
+  // by nature — classify them as such so the discovery driver harvests
+  // their outbound links instead of trying to extract a scheme.
+  {
+    host: '*',
+    path: /^\/?$/,
+    type: 'listing',
+    name: 'host-homepage',
+    confidence: 0.85,
+  },
+  {
+    host: '*',
+    path: /^\/(?:home|index|main|landing|portal)(?:\.html?)?\/?$/i,
+    type: 'listing',
+    name: 'host-named-homepage',
+    confidence: 0.8,
+  },
+
   // ── Per-portal rules (more specific than generic boilerplate) ───────────
   // These appear BEFORE the portal-agnostic boilerplate rules so a
   // portal's legit /search index isn't mistaken for site-search noise.
@@ -115,9 +136,17 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     name: 'indiagov-listing',
     confidence: 0.9,
   },
+  // Category index pages — entry into the schemes graph.
   {
     host: 'india.gov.in',
-    path: /^\/(?:content|spotlight-detail|scheme)\/[^/]+/i,
+    path: /^\/category(?:\/|$)/i,
+    type: 'listing',
+    name: 'indiagov-category',
+    confidence: 0.85,
+  },
+  {
+    host: 'india.gov.in',
+    path: /^\/(?:content|spotlight-detail|scheme|schemes)\/[^/]+/i,
     type: 'scheme',
     name: 'indiagov-detail',
     confidence: 0.8,
@@ -164,6 +193,39 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     confidence: 0.8,
   },
 
+  // ── Portal-agnostic scheme-page detection ──────────────────────────────
+  // Any *.gov.in / *.nic.in URL whose path contains one of the common
+  // scheme path-segments and a non-empty slug. Conservative enough to
+  // avoid catching navigation indexes (which already match the listing
+  // patterns above) and generous enough to recognise the dozens of
+  // niche ministry portals that don't have their own rule yet.
+  //
+  // Examples that match:
+  //   /scheme/pm-kisan-samman-nidhi
+  //   /schemes/maternity-benefit-scheme
+  //   /scheme-details/123
+  //   /details/scheme/123
+  //   /view/pmjjby
+  //   /program/skill-india
+  //   /benefit/aged-widow-pension
+  //   /welfare/elderly-care
+  {
+    host: '*',
+    path: /^\/(?:scheme|schemes|scheme-details|details|view|program|programmes?|benefit|benefits|welfare)\/[^/]+\/?$/i,
+    type: 'scheme',
+    name: 'generic-scheme-path',
+    confidence: 0.7,
+  },
+  // Nested slug variant — many portals use /scheme-details/{category}/{slug}
+  // or /view/scheme/{slug}.
+  {
+    host: '*',
+    path: /^\/(?:scheme|schemes|scheme-details|details|view|program|programmes?|benefit|benefits|welfare)\/[^/]+\/[^/]+\/?$/i,
+    type: 'scheme',
+    name: 'generic-nested-scheme-path',
+    confidence: 0.65,
+  },
+
   // ── Portal-agnostic ignore patterns (after per-portal rules) ────────────
   // `search` deliberately omitted here — portals use it legitimately as a
   // listing path (see per-portal rules above). Auth / boilerplate paths
@@ -186,18 +248,6 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     type: 'unknown',
     name: 'document-attachment',
     confidence: 0.4,
-  },
-
-  // ── Ministry / department landing pages (lowest priority fallback) ─────
-  // Bare host or /home/index URLs default to ministry so the discovery
-  // crawler treats them as landing pages — extract links, don't extract
-  // as a scheme.
-  {
-    host: '*',
-    path: /^\/?$|^\/(?:home|index|main)(?:\.html?)?$/i,
-    type: 'ministry',
-    name: 'host-root-landing',
-    confidence: 0.6,
   },
 ];
 

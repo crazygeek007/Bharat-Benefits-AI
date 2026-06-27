@@ -427,22 +427,22 @@ describe('enforceMandatoryFields', () => {
     expect(result.missingFields).toContain('description');
   });
 
-  it('rejects when eligibilityCriteria array is empty', () => {
+  it('accepts empty eligibilityCriteria as a partial scheme (now optional)', () => {
     const partial = fullPartial();
     partial.eligibilityCriteria = [];
     const result = enforceMandatoryFields(partial, 'https://example.gov.in/');
-    expect(isRejected(result)).toBe(true);
-    if (!isRejected(result)) return;
-    expect(result.missingFields).toContain('eligibilityCriteria');
+    expect(isRejected(result)).toBe(false);
+    if (isRejected(result)) return;
+    expect(result.eligibilityCriteria).toEqual([]);
   });
 
-  it('rejects when benefits array is empty', () => {
+  it('accepts empty benefits as a partial scheme (now optional)', () => {
     const partial = fullPartial();
     partial.benefits = [];
     const result = enforceMandatoryFields(partial, 'https://example.gov.in/');
-    expect(isRejected(result)).toBe(true);
-    if (!isRejected(result)) return;
-    expect(result.missingFields).toContain('benefits');
+    expect(isRejected(result)).toBe(false);
+    if (isRejected(result)) return;
+    expect(result.benefits).toEqual([]);
   });
 
   it('falls back to provided sourceUrl when partial has none', () => {
@@ -463,13 +463,15 @@ describe('enforceMandatoryFields', () => {
     expect(result.missingFields).toContain('sourceUrl');
   });
 
-  it('rejects when ministry is missing', () => {
+  it('accepts a scheme without ministry (falls back to "Unknown Ministry")', () => {
     const partial = fullPartial();
     delete partial.ministry;
     const result = enforceMandatoryFields(partial, 'https://example.gov.in/');
-    expect(isRejected(result)).toBe(true);
-    if (!isRejected(result)) return;
-    expect(result.missingFields).toContain('ministry');
+    expect(isRejected(result)).toBe(false);
+    if (isRejected(result)) return;
+    // Ministry is non-empty even when the partial omitted it — fallback
+    // keeps PrismaSchemePersistence's NOT NULL constraint satisfied.
+    expect(result.ministry).toBe('Unknown Ministry');
   });
 
   it('reports all missing mandatory fields together', () => {
@@ -563,8 +565,12 @@ describe('parseSchemeData', () => {
     expect(result).toBeNull();
     expect(logger.warns).toHaveLength(1);
     expect(logger.warns[0][1].sourceUrl).toBe('https://example.gov.in/');
+    // Mandatory-fields contract now narrowed to name + description +
+    // sourceUrl (ministry / eligibility / benefits became optional in the
+    // relaxed-validation refactor). The partial sourceUrl falls back to
+    // the supplied URL, so only `description` ends up missing.
     expect(logger.warns[0][1].missingFields).toEqual(
-      expect.arrayContaining(['description', 'eligibilityCriteria', 'benefits', 'ministry']),
+      expect.arrayContaining(['description']),
     );
   });
 

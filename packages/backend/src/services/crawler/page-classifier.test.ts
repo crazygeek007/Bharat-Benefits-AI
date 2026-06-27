@@ -112,10 +112,12 @@ describe('UrlPatternClassifier', () => {
     });
   });
 
-  it('classifies host-root pages as ministry', () => {
-    // Bare host with no path → ministry landing
-    expectClass('https://somedept.gov.in/', 'ministry');
-    expectClass('https://somedept.gov.in/index.html', 'ministry');
+  it('classifies host-root pages as listings (homepages are entry points, not schemes)', () => {
+    // Bare host with no path → homepage listing
+    expectClass('https://somedept.gov.in/', 'listing');
+    expectClass('https://somedept.gov.in/index.html', 'listing');
+    expectClass('https://somedept.gov.in/home', 'listing');
+    expectClass('https://somedept.gov.in/portal', 'listing');
   });
 
   it('returns unknown when no rule matches', () => {

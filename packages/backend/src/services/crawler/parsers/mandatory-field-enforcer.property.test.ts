@@ -36,6 +36,7 @@ import type {
 
 import {
   enforceMandatoryFields,
+  FALLBACK_MINISTRY,
   isRejected,
   MANDATORY_SCHEME_FIELDS,
   type MandatorySchemeField,
@@ -278,10 +279,7 @@ function arbPartialBundle(
       const presence: Record<MandatorySchemeField, boolean> = {
         name: isPresentString(raw.name),
         description: isPresentString(raw.description),
-        eligibilityCriteria: isPresentNonEmptyArray(raw.eligibilityCriteria),
-        benefits: isPresentNonEmptyArray(raw.benefits),
         sourceUrl: sourceUrlPresent,
-        ministry: isPresentString(raw.ministry),
       };
 
       return { partial, fallbackSourceUrl, presence };
@@ -336,7 +334,6 @@ describe('Property 20: Scheme Parsing Mandatory Field Enforcement', () => {
         expect(result.description).toBe(
           (partial.description as string).trim(),
         );
-        expect(result.ministry).toBe((partial.ministry as string).trim());
 
         const expectedSourceUrl =
           typeof partial.sourceUrl === 'string' &&
@@ -345,9 +342,28 @@ describe('Property 20: Scheme Parsing Mandatory Field Enforcement', () => {
             : fallbackSourceUrl.trim();
         expect(result.sourceUrl).toBe(expectedSourceUrl);
 
-        // Arrays should be preserved by reference / value.
-        expect(result.eligibilityCriteria).toBe(partial.eligibilityCriteria);
-        expect(result.benefits).toBe(partial.benefits);
+        // Ministry is now optional: when present, it's preserved (trimmed);
+        // when missing, the enforcer falls back to FALLBACK_MINISTRY so
+        // PrismaSchemePersistence still has a non-null value.
+        if (typeof partial.ministry === 'string' && partial.ministry.trim().length > 0) {
+          expect(result.ministry).toBe(partial.ministry.trim());
+        } else {
+          expect(result.ministry).toBe(FALLBACK_MINISTRY);
+        }
+
+        // Eligibility / benefits are now optional. When the partial holds a
+        // proper array, it's preserved by reference; otherwise the enforcer
+        // returns an empty array so the SchemeObject shape stays consistent.
+        if (Array.isArray(partial.eligibilityCriteria)) {
+          expect(result.eligibilityCriteria).toBe(partial.eligibilityCriteria);
+        } else {
+          expect(result.eligibilityCriteria).toEqual([]);
+        }
+        if (Array.isArray(partial.benefits)) {
+          expect(result.benefits).toBe(partial.benefits);
+        } else {
+          expect(result.benefits).toEqual([]);
+        }
       }),
       { numRuns: 200 },
     );
@@ -470,14 +486,17 @@ describe('Property 20: Scheme Parsing Mandatory Field Enforcement', () => {
         expect(result.name.length).toBeGreaterThan(0);
         expect(typeof result.description).toBe('string');
         expect(result.description.length).toBeGreaterThan(0);
+        // Ministry is non-empty even when missing from the partial — the
+        // enforcer falls back to FALLBACK_MINISTRY rather than rejecting.
         expect(typeof result.ministry).toBe('string');
         expect(result.ministry.length).toBeGreaterThan(0);
         expect(typeof result.sourceUrl).toBe('string');
         expect(result.sourceUrl.length).toBeGreaterThan(0);
+        // Eligibility / benefits are arrays (possibly empty now that they
+        // are optional). Don't assert length > 0 — the relaxed contract
+        // explicitly allows partial schemes to land in the catalogue.
         expect(Array.isArray(result.eligibilityCriteria)).toBe(true);
-        expect(result.eligibilityCriteria.length).toBeGreaterThan(0);
         expect(Array.isArray(result.benefits)).toBe(true);
-        expect(result.benefits.length).toBeGreaterThan(0);
 
         // Optional fields are either of their proper shape OR null —
         // never undefined.

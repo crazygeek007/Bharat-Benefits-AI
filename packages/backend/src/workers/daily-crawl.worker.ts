@@ -164,60 +164,129 @@ export async function runDailyCrawl(
 
   const urls = resolveSourceUrls(options);
 
-  // Discovery mode (sitemap): when CRAWLER_SITEMAP_DISCOVERY=true,
-  // expand seeds by walking each portal's sitemap.xml graph. Sitemap
-  // XML files often get CDN special-case treatment from the same
-  // portals that 403 regular HTML scrapes, so this can yield URL
-  // discovery even from datacenter IPs that the HTML discovery layer
-  // can't reach. Independent of the link-discovery flag — they can
-  // run together (sitemap first, then any URLs the classifier sends
-  // through the HTML pipeline).
+  // ── Step 1: Classify the seed URLs themselves ──────────────────────────
+  // Seed URLs are typically portal homepages (myscheme.gov.in/,
+  // india.gov.in/, ...) which are entry points for discovery — NOT scheme
+  // detail pages. Sending them straight to the orchestrator means the
+  // scheme parser sees a marketing-copy homepage, rejects it for
+  // missing mandatory fields, and pollutes logs with confusing errors.
+  //
+  // Bucket seeds by their URL-pattern verdict so we know which ones we
+  // can safely hand to the orchestrator (`scheme` confidence ≥ 0.7) vs
+  // which ones are crawl-frontier entry points (`listing` / `ministry`).
+  const { UrlPatternClassifier } = await import(
+    '../services/crawler/page-classifier'
+  );
+  const seedClassifier = new UrlPatternClassifier();
+  const seedBuckets = {
+    scheme: [] as string[],
+    listing: [] as string[],
+    ministry: [] as string[],
+    ignore: [] as string[],
+    unknown: [] as string[],
+  };
+  for (const url of urls) {
+    const verdict = seedClassifier.classify(url);
+    if (verdict.type === 'scheme' && verdict.confidence >= 0.7) {
+      seedBuckets.scheme.push(url);
+    } else if (verdict.type === 'listing') {
+      seedBuckets.listing.push(url);
+    } else if (verdict.type === 'ministry') {
+      seedBuckets.ministry.push(url);
+    } else if (verdict.type === 'ignore') {
+      seedBuckets.ignore.push(url);
+    } else {
+      seedBuckets.unknown.push(url);
+    }
+  }
+  logger.info('Classified seed URLs', {
+    total: urls.length,
+    scheme: seedBuckets.scheme.length,
+    listing: seedBuckets.listing.length,
+    ministry: seedBuckets.ministry.length,
+    ignore: seedBuckets.ignore.length,
+    unknown: seedBuckets.unknown.length,
+  });
+
+  // ── Step 2: Sitemap discovery (if enabled) ─────────────────────────────
+  let sitemapSchemeUrls: string[] = [];
+  let sitemapListingUrls: string[] = [];
   if (process.env.CRAWLER_SITEMAP_DISCOVERY === 'true') {
-    const sitemapUrls = await expandSeedsViaSitemaps(urls, logger);
-    if (sitemapUrls.length > 0) {
-      logger.info('Sitemap discovery yielded scheme URLs', {
-        seedCount: urls.length,
-        schemeUrlCount: sitemapUrls.length,
-      });
-      const merged = Array.from(new Set([...urls, ...sitemapUrls]));
-      logger.info('Starting daily crawl', { sourceCount: merged.length });
-      const result = await orchestrator.executeDailyCrawl(merged);
-      logCompletion(logger, merged, result);
-      return result;
-    }
-    logger.warn('Sitemap discovery returned no URLs; trying other paths');
+    const sitemapResult = await expandSeedsViaSitemaps(urls, logger);
+    sitemapSchemeUrls = sitemapResult.schemeUrls;
+    sitemapListingUrls = sitemapResult.listingUrls;
   }
 
-  // Discovery mode (link-graph): when CRAWLER_LINK_DISCOVERY=true, expand seed URLs
-  // by crawling each as an entry point. The discovery orchestrator
-  // walks the link graph (depth 3, per-host budget 500), classifies
-  // each page, and hands confirmed scheme URLs back to the main
-  // CrawlerOrchestrator via processScheme. The opt-in flag exists so
-  // operators can verify the new code path independently of the
-  // existing direct-URL crawler.
+  // ── Step 3: Link-graph discovery (if enabled) ──────────────────────────
+  // Feed entry points harvested by sitemap discovery PLUS the original
+  // listing/ministry/unknown seeds into the link-discovery layer. We do
+  // NOT include `scheme`-classified seeds — those bypass discovery and
+  // go straight to the orchestrator (next step).
+  let linkSchemeUrls: string[] = [];
   if (process.env.CRAWLER_LINK_DISCOVERY === 'true') {
-    const discoveryUrls = await expandSeedsViaDiscovery(urls, logger);
-    if (discoveryUrls.length > 0) {
-      logger.info('Discovery yielded scheme URLs', {
-        seedCount: urls.length,
-        schemeUrlCount: discoveryUrls.length,
-      });
-      // Hand the harvested scheme URLs to the existing orchestrator
-      // for the full ingest pipeline. The orchestrator's URL list is
-      // the union of the seed URLs (so single-page portals still work)
-      // and the discovery-harvested scheme URLs.
-      const merged = Array.from(new Set([...urls, ...discoveryUrls]));
-      logger.info('Starting daily crawl', { sourceCount: merged.length });
-      const result = await orchestrator.executeDailyCrawl(merged);
-      logCompletion(logger, merged, result);
-      return result;
+    const linkSeeds = Array.from(
+      new Set([
+        ...seedBuckets.listing,
+        ...seedBuckets.ministry,
+        ...seedBuckets.unknown,
+        ...sitemapListingUrls,
+      ]),
+    );
+    if (linkSeeds.length > 0) {
+      linkSchemeUrls = await expandSeedsViaDiscovery(linkSeeds, logger);
+    } else {
+      logger.info('Link discovery skipped: no listing/ministry seeds available');
     }
-    logger.warn('Discovery returned no scheme URLs; falling back to seed-only crawl');
   }
 
-  logger.info('Starting daily crawl', { sourceCount: urls.length });
-  const result = await orchestrator.executeDailyCrawl(urls);
-  logCompletion(logger, urls, result);
+  // ── Step 4: Union of confirmed-scheme URLs from all discovery layers ──
+  // ONLY these enter the extraction pipeline. Homepages, listings, and
+  // unknown URLs are never handed to the scheme parser — they served
+  // their purpose as discovery entry points and stop here.
+  const schemeUrls = Array.from(
+    new Set([
+      ...seedBuckets.scheme,
+      ...sitemapSchemeUrls,
+      ...linkSchemeUrls,
+    ]),
+  );
+
+  if (schemeUrls.length === 0) {
+    logger.warn(
+      'No scheme URLs discovered this run — skipping ingest pass to avoid parsing homepages',
+      {
+        sitemapDiscoveryEnabled:
+          process.env.CRAWLER_SITEMAP_DISCOVERY === 'true',
+        linkDiscoveryEnabled:
+          process.env.CRAWLER_LINK_DISCOVERY === 'true',
+        seedBuckets: {
+          scheme: seedBuckets.scheme.length,
+          listing: seedBuckets.listing.length,
+          ministry: seedBuckets.ministry.length,
+          ignore: seedBuckets.ignore.length,
+          unknown: seedBuckets.unknown.length,
+        },
+      },
+    );
+    const emptyResult: CrawlResult = {
+      newSchemes: 0,
+      updatedSchemes: 0,
+      failedSources: [],
+      duration: 0,
+      completedAt: new Date(),
+    };
+    logCompletion(logger, urls, emptyResult);
+    return emptyResult;
+  }
+
+  logger.info('Starting daily crawl', {
+    schemeUrlCount: schemeUrls.length,
+    fromSeeds: seedBuckets.scheme.length,
+    fromSitemap: sitemapSchemeUrls.length,
+    fromLinkDiscovery: linkSchemeUrls.length,
+  });
+  const result = await orchestrator.executeDailyCrawl(schemeUrls);
+  logCompletion(logger, schemeUrls, result);
   return result;
 }
 
@@ -234,10 +303,30 @@ export async function runDailyCrawl(
  * can't reach. There's no guarantee — we'll see in production whether
  * a given portal's sitemap is reachable from Render's IP range.
  */
+/**
+ * Run the sitemap-discovery layer against the supplied seed URLs and
+ * return BOTH scheme-classified URLs and listing/ministry URLs.
+ *
+ *   - `schemeUrls`  : URLs the classifier confidently labels as scheme
+ *                     detail pages. These go straight to the
+ *                     orchestrator's extraction pipeline.
+ *   - `listingUrls` : URLs the classifier labels as listing / ministry
+ *                     pages. These are entry points for the link-
+ *                     discovery layer to crawl deeper from.
+ *
+ * Best-effort — a sitemap fetch failure on one portal does not stop
+ * the others, and a total failure returns empty arrays (the caller
+ * gracefully falls back to other discovery paths or skips ingest).
+ *
+ * Sitemap XML endpoints often get CDN special-case treatment so
+ * search engines can index the site, which is why this path can
+ * sometimes work from datacenter IPs that the HTML scrape layer
+ * can't reach.
+ */
 async function expandSeedsViaSitemaps(
   seedUrls: string[],
   logger: OrchestratorLogger,
-): Promise<string[]> {
+): Promise<{ schemeUrls: string[]; listingUrls: string[] }> {
   try {
     const { discoverFromSitemaps, resolveSitemapSeeds } = await import(
       '../services/crawler/sitemap-discovery'
@@ -278,10 +367,12 @@ async function expandSeedsViaSitemaps(
     // FAQs, tourism index, etc. Sending all of those into the extraction
     // pipeline wastes the Gemini embedding budget AND floods the failure
     // log because the mandatory-field enforcer correctly rejects non-
-    // scheme pages. Filter through the URL-pattern classifier first so
-    // only URLs likely to be scheme pages reach the orchestrator.
+    // scheme pages. Bucket through the URL-pattern classifier so the
+    // caller can decide which URLs are extraction-targets vs which are
+    // crawl-frontier entry points.
     const classifier = new UrlPatternClassifier();
-    const filtered: string[] = [];
+    const schemeUrls: string[] = [];
+    const listingUrls: string[] = [];
     const classificationBuckets = {
       scheme: 0,
       listing: 0,
@@ -292,15 +383,10 @@ async function expandSeedsViaSitemaps(
     for (const entry of result.urls) {
       const verdict = classifier.classify(entry.url);
       classificationBuckets[verdict.type]++;
-      // Only forward URLs the URL-pattern classifier confidently
-      // identified as scheme pages. `unknown` could be either way; the
-      // current cost (Gemini embeddings + Pinecone writes) of running
-      // each through the full pipeline is high enough that we
-      // deliberately bias conservative. Once we have data on what the
-      // `unknown` bucket actually contains we can extend
-      // URL_PATTERN_RULES.
       if (verdict.type === 'scheme' && verdict.confidence >= 0.7) {
-        filtered.push(entry.url);
+        schemeUrls.push(entry.url);
+      } else if (verdict.type === 'listing' || verdict.type === 'ministry') {
+        listingUrls.push(entry.url);
       }
     }
 
@@ -309,17 +395,18 @@ async function expandSeedsViaSitemaps(
       sitemapsParsed: result.sitemapsParsed,
       sitemapFailures: result.sitemapFailures,
       urlsFound: result.urls.length,
-      urlsAfterClassifier: filtered.length,
+      schemeUrls: schemeUrls.length,
+      listingUrls: listingUrls.length,
       classificationBuckets,
       rejectedByDomain: result.rejectedByDomain,
       perHost: result.perHost,
     });
-    return filtered;
+    return { schemeUrls, listingUrls };
   } catch (err) {
     logger.error('Sitemap discovery layer failed; falling back to other paths', {
       err: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return { schemeUrls: [], listingUrls: [] };
   }
 }
 
@@ -393,6 +480,19 @@ async function expandSeedsViaDiscovery(
  * validation), parsingFailures (mandatory-field enforcement), and
  * fetchOrOther (transport / unknown) so admins can triage a run at a
  * glance without grepping the per-failure list.
+ *
+ * Also emits a `perPortal` aggregation grouped by hostname so the
+ * operations team can see at a glance which sources are healthy,
+ * which are rate-limiting us, and which are returning unparseable
+ * HTML. The aggregation derives:
+ *   - `attempted`  : count of input URLs on that host
+ *   - `failed`     : count of FailedSource entries on that host
+ *   - `successful` : attempted - failed (best-effort; the orchestrator
+ *                    doesn't return per-URL success metadata so we
+ *                    rely on absence-of-failure)
+ *   - `failureReasons` : top-3 most-common reason strings on that
+ *                    host so admins can spot a pattern (e.g.
+ *                    "all 200 failures are 403 Forbidden").
  */
 function logCompletion(
   logger: OrchestratorLogger,
@@ -423,6 +523,8 @@ function logCompletion(
     }
   }
 
+  const perPortal = buildPerPortalStats(urls, result);
+
   logger.info('Daily crawl completed', {
     sourceCount: urls.length,
     pagesCrawled: urls.length,
@@ -434,7 +536,102 @@ function logCompletion(
     parsingFailures: failureBuckets.parsingFailures,
     fetchOrOther: failureBuckets.fetchOrOther,
     durationMs: result.duration,
+    perPortal,
   });
+}
+
+interface PerPortalStats {
+  attempted: number;
+  failed: number;
+  successful: number;
+  /** Most-common failure reasons on this portal (max 3, with counts). */
+  failureReasons: Array<{ reason: string; count: number }>;
+}
+
+/**
+ * Group the run's attempted URLs and failed sources by hostname and
+ * produce a flat per-portal map suitable for direct inclusion in the
+ * structured log payload.
+ */
+function buildPerPortalStats(
+  urls: string[],
+  result: CrawlResult,
+): Record<string, PerPortalStats> {
+  const attempted: Record<string, number> = {};
+  for (const url of urls) {
+    const host = extractHost(url);
+    attempted[host] = (attempted[host] ?? 0) + 1;
+  }
+
+  // Per-host failure count + reason distribution.
+  const failed: Record<string, number> = {};
+  const reasonsByHost: Record<string, Map<string, number>> = {};
+  for (const fs of result.failedSources) {
+    const host = extractHost(fs.url);
+    failed[host] = (failed[host] ?? 0) + 1;
+    const reason = compactReason(fs.reason);
+    const map = reasonsByHost[host] ?? new Map<string, number>();
+    map.set(reason, (map.get(reason) ?? 0) + 1);
+    reasonsByHost[host] = map;
+  }
+
+  const hosts = new Set<string>([
+    ...Object.keys(attempted),
+    ...Object.keys(failed),
+  ]);
+  const out: Record<string, PerPortalStats> = {};
+  for (const host of hosts) {
+    const a = attempted[host] ?? 0;
+    const f = failed[host] ?? 0;
+    const reasonMap = reasonsByHost[host];
+    const failureReasons = reasonMap
+      ? Array.from(reasonMap.entries())
+          .sort((x, y) => y[1] - x[1])
+          .slice(0, 3)
+          .map(([reason, count]) => ({ reason, count }))
+      : [];
+    out[host] = {
+      attempted: a,
+      failed: f,
+      // Successful is best-effort: the orchestrator doesn't return
+      // per-URL success metadata, so we report attempted-minus-failed.
+      // For a host that was discovered via sitemap but produced 0
+      // results, attempted will be 0 — those rows naturally drop out.
+      successful: Math.max(0, a - f),
+      failureReasons,
+    };
+  }
+  return out;
+}
+
+function extractHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '(invalid-url)';
+  }
+}
+
+/**
+ * Compact a failure reason into a short tag suitable for histogram-
+ * style aggregation. Keeps the first ~80 chars so we don't blow up
+ * the log payload, and strips per-URL ids so the same root cause
+ * collapses to the same bucket.
+ */
+function compactReason(reason: string): string {
+  if (typeof reason !== 'string' || reason.length === 0) return '(unknown)';
+  const lower = reason.toLowerCase();
+  if (lower.includes('mandatory')) return 'mandatory-fields-missing';
+  if (lower.includes('403') || lower.includes('forbidden')) return 'http-403';
+  if (lower.includes('404')) return 'http-404';
+  if (lower.includes('429')) return 'http-429';
+  if (lower.includes('timeout')) return 'timeout';
+  if (lower.includes('fetch failed')) return 'fetch-failed';
+  if (lower.includes('domain') || lower.includes('source url')) {
+    return 'domain-rejected';
+  }
+  if (lower.includes('parse')) return 'parser-error';
+  return reason.slice(0, 80);
 }
 
 /**

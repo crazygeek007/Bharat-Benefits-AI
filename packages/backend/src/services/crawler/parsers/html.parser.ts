@@ -30,6 +30,8 @@ import type {
   SchemeObject,
 } from '@bharat-benefits/shared';
 
+import { extractWithPortalAwareness } from './portal-extractors';
+
 const ELIGIBILITY_HEADING_RE = /eligib/i;
 const BENEFITS_HEADING_RE = /benefit/i;
 const DOCUMENTS_HEADING_RE = /documents?/i;
@@ -80,7 +82,12 @@ export function parseHTML(content: string, sourceUrl: string): Partial<SchemeObj
   const deadline = extractDeadline($);
   result.deadline = deadline;
 
-  return result;
+  // ─── Portal-aware enrichment ─────────────────────────────────────────────
+  // Layer portal-specific selectors on top of the heuristic result.
+  // Returns `result` untouched for any URL that doesn't match a known
+  // portal (long-tail ministry sites), so this call is a safe no-op
+  // in the worst case.
+  return extractWithPortalAwareness(content ?? '', sourceUrl, result);
 }
 
 // ─── Field Extractors ────────────────────────────────────────────────────────
