@@ -30,7 +30,7 @@ on:
       link_discovery:
         description: "Enable HTML link-graph discovery (true/false)"
         required: false
-        default: "false"
+        default: "true"
 
 # Don't queue multiple runs against the production database — if a
 # scheduled run is already going and we trigger another manually, the
