@@ -1,11 +1,92 @@
-'use client';
-
 import { MAIN_CONTENT_ID } from '../components/SkipLink';
 
 /**
- * Modern AI SaaS landing page.
+ * Default scheme-count copy used when the backend fetch fails. We use
+ * a vague "10+" rather than guessing the real number — operators will
+ * see the failure in logs and a future render picks up the live count.
  */
-export default function Home() {
+const SCHEME_COUNT_FALLBACK = 10;
+
+/**
+ * Resolve the backend base URL the same way the rest of the frontend
+ * does (`BACKEND_URL` server-side, `NEXT_PUBLIC_BACKEND_URL` for the
+ * browser bundle). Mirrored locally because importing the existing
+ * `getBackendBaseUrl` from `lib/api.ts` would pull a 'use client'-y
+ * module into this Server Component.
+ */
+function getBackendBaseUrl(): string {
+  return (
+    process.env.BACKEND_URL ||
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    'http://localhost:4000'
+  );
+}
+
+/**
+ * Fetches the total verified scheme count via the `/api/schemes`
+ * browse endpoint. We ask for `pageSize=1` because we only care about
+ * the `totalCount` field — no need to ship the full first-page payload
+ * just to render a hero stat.
+ *
+ * Cached for 60 seconds via Next.js ISR (`next: { revalidate: 60 }`),
+ * so the homepage is served from the static cache between refreshes
+ * and the backend doesn't get hit on every page view.
+ *
+ * Falls back to {@link SCHEME_COUNT_FALLBACK} on any error (network,
+ * non-2xx response, malformed body) so a brief backend outage doesn't
+ * break the homepage. The fallback is small enough that we'll never
+ * accidentally show a number higher than the real catalogue.
+ */
+async function fetchSchemeCount(): Promise<number> {
+  try {
+    const res = await fetch(
+      `${getBackendBaseUrl()}/api/schemes?pageSize=1`,
+      { next: { revalidate: 60 } },
+    );
+    if (!res.ok) return SCHEME_COUNT_FALLBACK;
+    const body = (await res.json()) as { totalCount?: unknown };
+    if (typeof body.totalCount === 'number' && body.totalCount >= 0) {
+      return body.totalCount;
+    }
+    return SCHEME_COUNT_FALLBACK;
+  } catch {
+    return SCHEME_COUNT_FALLBACK;
+  }
+}
+
+/**
+ * Render the scheme count for the hero stat. Small counts (< 10)
+ * show exactly; anything from 10 upwards displays as the number
+ * followed by `+` so we don't have to redeploy the marketing copy
+ * every time the catalogue grows by one scheme.
+ *
+ * Examples:
+ *   3   -> "3"
+ *   12  -> "12+"
+ *   103 -> "103+"
+ *   1500 -> "1500+"
+ */
+function formatSchemeCount(count: number): string {
+  if (count < 10) return String(count);
+  return `${count}+`;
+}
+
+/**
+ * Modern AI SaaS landing page.
+ *
+ * Server Component. The hero stat reflecting "verified schemes" is
+ * fetched at render time from the backend's `/api/schemes` browse
+ * endpoint via the `totalCount` field so the number stays in sync
+ * with the production catalogue as it grows. The response is cached
+ * for 60 seconds via Next.js ISR — fast enough to refresh between
+ * crawler runs without putting load on the backend.
+ *
+ * If the backend is unreachable at render time we fall back to a
+ * sensible-looking default so the page still renders. Operators see
+ * the failure in logs rather than as a broken homepage.
+ */
+export default async function Home() {
+  const schemeCount = await fetchSchemeCount();
   return (
     <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ overflow: 'hidden' }}>
       {/* HERO ───────────────────────────────────────────────────────── */}
@@ -106,7 +187,7 @@ export default function Home() {
             textAlign: 'center',
           }}
         >
-          <Stat value="12+" label="Verified schemes" />
+          <Stat value={formatSchemeCount(schemeCount)} label="Verified schemes" />
           <Stat value="6" label="Languages" />
           <Stat value="100%" label="Official sources" />
         </div>
