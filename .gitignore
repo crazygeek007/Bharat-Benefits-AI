@@ -28,3 +28,7 @@ npm-debug.log*
 
 # TypeScript
 *.tsbuildinfo
+
+# Personal / local-only notes (kept out of git on purpose)
+RESUME_AND_INTERVIEW.md
+.commit-msg.tmp
