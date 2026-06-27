@@ -144,6 +144,30 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     name: 'indiagov-category',
     confidence: 0.85,
   },
+  // Services listing — `/services` without a deeper segment is a
+  // browse-page; the `/services/details/<slug>` rule below catches
+  // the actual scheme detail.
+  {
+    host: 'india.gov.in',
+    path: /^\/services\/?$/i,
+    type: 'listing',
+    name: 'indiagov-services-index',
+    confidence: 0.85,
+  },
+  // Service-detail pages on india.gov.in. Discovered on June 27 in
+  // the link-graph output — many are bona-fide scheme detail pages
+  // (PM-KISAN-style entries) rendered under the `/services/details/`
+  // path rather than `/content/` or `/scheme/`. Confidence is tuned
+  // a little below `indiagov-detail` because /services/details/ also
+  // covers procedural-help pages (e.g. "interact-with-PM"), but the
+  // mandatory-field gate downstream filters those out cleanly.
+  {
+    host: 'india.gov.in',
+    path: /^\/services\/details\/[^/]+/i,
+    type: 'scheme',
+    name: 'indiagov-services-detail',
+    confidence: 0.75,
+  },
   {
     host: 'india.gov.in',
     path: /^\/(?:content|spotlight-detail|scheme|schemes)\/[^/]+/i,
@@ -191,6 +215,18 @@ const URL_PATTERN_RULES: readonly UrlPatternRule[] = [
     type: 'listing',
     name: 'igod-listing',
     confidence: 0.8,
+  },
+  // iGOD navigation hubs: /sector/<id>/organizations, /leg/categories,
+  // /jud/categories, /organization/new_additions all fan out into
+  // organisation rosters that occasionally link to scheme pages. Treat
+  // them as listings (extract child links) rather than letting them
+  // fall through to "unknown" where they get dropped.
+  {
+    host: 'igod.gov.in',
+    path: /^\/(?:sector|leg|jud|organization|organizations)(?:\/|$)/i,
+    type: 'listing',
+    name: 'igod-nav',
+    confidence: 0.75,
   },
 
   // ── Portal-agnostic scheme-page detection ──────────────────────────────

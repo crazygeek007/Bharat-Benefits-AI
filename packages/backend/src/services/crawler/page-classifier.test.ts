@@ -80,6 +80,23 @@ describe('UrlPatternClassifier', () => {
       expectClass('https://www.india.gov.in/content/pm-awas', 'scheme');
       expectClass('https://india.gov.in/spotlight-detail/pmjjby', 'scheme');
     });
+
+    it('classifies /services/details/<slug> as scheme (added Jun 27 after link-graph evidence)', () => {
+      // Real URLs harvested from a live discovery run.
+      expectClass(
+        'https://www.india.gov.in/services/details/online-textbooks-of-national-council-of-educational-research-and-training',
+        'scheme',
+      );
+      expectClass(
+        'https://www.india.gov.in/services/details/national-career-service-for-job-seekers-and-employers',
+        'scheme',
+      );
+    });
+
+    it('classifies bare /services as a listing index', () => {
+      expectClass('https://www.india.gov.in/services', 'listing');
+      expectClass('https://www.india.gov.in/services/', 'listing');
+    });
   });
 
   describe('scholarships.gov.in', () => {
@@ -109,6 +126,17 @@ describe('UrlPatternClassifier', () => {
     it('classifies catalogue / dataset listings', () => {
       expectClass('https://igod.gov.in/dataset', 'listing');
       expectClass('https://igod.gov.in/catalogue', 'listing');
+    });
+
+    it('classifies navigation hubs (sector / leg / jud / organization) as listings', () => {
+      // Real URLs harvested from a live discovery run on Jun 27.
+      expectClass(
+        'https://igod.gov.in/sector/GRNsIHQBsvhI6u6Q3tju/organizations',
+        'listing',
+      );
+      expectClass('https://igod.gov.in/leg/categories', 'listing');
+      expectClass('https://igod.gov.in/jud/categories', 'listing');
+      expectClass('https://igod.gov.in/organization/new_additions', 'listing');
     });
   });
 
