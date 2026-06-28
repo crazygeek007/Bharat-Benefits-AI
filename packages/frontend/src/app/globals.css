@@ -477,10 +477,21 @@ a:hover {
   padding: 0 16px 48px;
 }
 
+/* Three stats, always in three equal columns on mobile.
+ *
+ * Earlier this used `repeat(auto-fit, minmax(120px, 1fr))` which
+ * looked fine on paper but on a ~360px phone only fits 2 columns
+ * (2*120 + 16 gap = 256 ≤ 328 available, but 3*120 + 32 gap = 392 >
+ * 328). That left "100%" orphaned on a second row, which read as a
+ * layout glitch. Forcing 3 columns gives us three confident
+ * side-by-side stats — exactly the "premium" feel we want — and
+ * `minmax(0, 1fr)` lets each column shrink below its content width
+ * so the numbers don't blow out the grid at very small widths.
+ */
 .bb-hero-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   max-width: 600px;
   margin: 40px auto 0;
   text-align: center;

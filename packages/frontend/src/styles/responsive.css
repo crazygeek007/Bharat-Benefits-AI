@@ -206,11 +206,18 @@ body {
   gap: 6px;
 }
 
-/* Hide the "Language" text label on mobile — the globe glyph + the
-   visible dropdown carry the meaning, and removing the label is what
-   lets brand + lang + Sign in + hamburger all fit on a single header
-   row at 360–400px viewports. Restored at the tablet breakpoint. */
-.bb-lang-label {
+/* Mobile header pattern (Notion/Linear/Stripe style):
+ *
+ *   [logo + brand]  ……………………  [☰]
+ *
+ * LanguageSwitcher + AuthButton don't appear in the header itself on
+ * mobile — they're rendered inside the collapsed nav panel
+ * (`.bb-nav__extras`). This keeps the header to a single ~56px row
+ * instead of wrapping to two rows when brand + language + Sign in +
+ * hamburger don't fit. Restored top-right at the tablet breakpoint
+ * where there's enough room.
+ */
+.bb-header-desktop-controls {
   display: none;
 }
 
@@ -219,8 +226,10 @@ body {
     gap: 8px;
   }
 
-  .bb-lang-label {
-    display: inline;
+  .bb-header-desktop-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 }
 
@@ -365,6 +374,53 @@ body {
     padding: 8px 14px;
     min-height: 36px;
     font-size: 14.5px;
+  }
+}
+
+/* ─── Mobile-only nav extras (Lang + Auth inside the menu) ─────────── */
+
+/* The collapsed nav panel on mobile contains the primary links plus a
+   trailing block with the Language switcher and the Sign in / user
+   menu — the same controls that sit top-right of the header on
+   desktop. Hidden ≥768px because the desktop header already shows
+   them inline. Padded + bordered to read as a distinct "settings"
+   section at the bottom of the menu. */
+.bb-nav__extras {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* LanguageSwitcher renders as a <label> with the globe glyph + text +
+   <select>. Stretch the select to full width inside the menu so it
+   reads as a proper form field, not a tiny inline dropdown. */
+.bb-nav__extras label {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bb-nav__extras select {
+  margin-left: auto;
+  min-height: 40px;
+  flex: 0 1 auto;
+}
+
+/* The Sign in CTA (an <a>) inside the menu — make it full-width so it
+   reads as a confident primary action, not a dangling pill. */
+.bb-nav__extras > a {
+  width: 100%;
+  justify-content: center;
+  min-height: 44px;
+}
+
+@media (min-width: 768px) {
+  .bb-nav__extras {
+    display: none;
   }
 }
 

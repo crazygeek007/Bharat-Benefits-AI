@@ -98,8 +98,17 @@ export function SiteHeader({ currentPath }: SiteHeaderProps = {}) {
         </a>
 
         <div className="bb-site-header__controls">
-          <LanguageSwitcher />
-          <AuthButton />
+          {/* Desktop-only cluster: LanguageSwitcher + AuthButton sit in
+              the header top-right. Hidden on mobile via CSS — on
+              phones the same controls render inside the hamburger
+              menu (see `.bb-nav__extras` below). This is the premium
+              mobile pattern Notion/Linear/Stripe all use: keep the
+              header clean (just brand + hamburger) and tuck auth +
+              settings inside the menu. */}
+          <div className="bb-header-desktop-controls">
+            <LanguageSwitcher />
+            <AuthButton />
+          </div>
           <button
             type="button"
             className="bb-nav-toggle"
@@ -139,6 +148,15 @@ export function SiteHeader({ currentPath }: SiteHeaderProps = {}) {
               );
             })}
           </ul>
+          {/* Mobile-only menu extras: Language switcher + Sign in /
+              user menu. Hidden ≥768px (the desktop header already
+              shows them top-right). Rendering both copies is cheap —
+              useSession() shares context, useId() generates unique
+              ids per call. */}
+          <div className="bb-nav__extras">
+            <LanguageSwitcher />
+            <AuthButton />
+          </div>
         </nav>
       </div>
     </header>
