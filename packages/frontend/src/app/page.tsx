@@ -460,26 +460,13 @@ function FeatureCard({
   title: string;
   description: string;
 }) {
+  // Hover styling lives in `.feature-card` in globals.css. We can't use
+  // onMouseEnter/onMouseLeave here because this file is rendered as a
+  // Server Component (Server Components can't pass event handlers to
+  // the client — the page 500s with "Event handlers cannot be passed to
+  // Client Component props"). CSS :hover does the same thing for free.
   return (
-    <div
-      style={{
-        padding: 28,
-        background: '#fff',
-        border: '1px solid #e4e4e7',
-        borderRadius: 16,
-        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.borderColor = '#d4d4d8';
-        e.currentTarget.style.boxShadow = '0 10px 25px -5px rgba(0,0,0,0.08)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.borderColor = '#e4e4e7';
-        e.currentTarget.style.boxShadow = 'none';
-      }}
-    >
+    <div className="feature-card">
       <div
         aria-hidden="true"
         style={{
@@ -506,32 +493,17 @@ function FeatureCard({
 }
 
 function CategoryTile({ name, icon, accent }: { name: string; icon: string; accent: string }) {
+  // The per-category accent is passed to CSS via custom properties so
+  // each tile hovers to its own colour without JS event handlers (which
+  // a Server Component can't emit — see the comment on FeatureCard).
+  // `${accent}08` matches the original tint (8-hex ≈ 3% alpha).
   return (
     <a
       href={`/schemes?category=${encodeURIComponent(name)}`}
+      className="category-tile"
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '14px 18px',
-        background: '#fff',
-        border: '1px solid #e4e4e7',
-        borderRadius: 12,
-        textDecoration: 'none',
-        color: '#09090b',
-        fontSize: 14.5,
-        fontWeight: 500,
-        transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = accent;
-        e.currentTarget.style.background = `${accent}08`;
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = '#e4e4e7';
-        e.currentTarget.style.background = '#fff';
-        e.currentTarget.style.transform = 'translateY(0)';
+        ['--accent' as string]: accent,
+        ['--accent-bg' as string]: `${accent}08`,
       }}
     >
       <span aria-hidden="true" style={{ fontSize: 20 }}>{icon}</span>

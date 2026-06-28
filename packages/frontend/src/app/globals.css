@@ -396,3 +396,53 @@ a:hover {
   color: var(--text);
   transform: translateY(-1px);
 }
+
+/* ─── Landing-page cards ───────────────────────────────────────────── */
+
+/* Feature cards and category tiles previously did hover styling via
+   inline onMouseEnter/onMouseLeave handlers in the JSX. That worked when
+   page.tsx was a Client Component, but the homepage is now an async
+   Server Component (so it can fetch the live scheme count at request
+   time), and Server Components throw when JSX includes event-handler
+   props. These classes replace the JS handlers with plain CSS hover. */
+
+.feature-card {
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transition: transform var(--transition), border-color var(--transition),
+    box-shadow var(--transition);
+}
+
+.feature-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 0.08);
+}
+
+/* The per-category accent colour is passed in as inline custom
+   properties (`--accent`, `--accent-bg`) so each tile can hover to its
+   own colour without needing JS. */
+.category-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 14.5px;
+  font-weight: 500;
+  transition: transform var(--transition), border-color var(--transition),
+    background var(--transition);
+}
+
+.category-tile:hover {
+  border-color: var(--accent, var(--border-strong));
+  background: var(--accent-bg, var(--surface-2));
+  transform: translateY(-1px);
+  color: var(--text);
+}
