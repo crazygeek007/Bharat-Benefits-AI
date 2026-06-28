@@ -121,15 +121,10 @@ export default async function Home() {
   return (
     <main id={MAIN_CONTENT_ID} tabIndex={-1} style={{ overflow: 'hidden' }}>
       {/* HERO ───────────────────────────────────────────────────────── */}
-      <section
-        style={{
-          position: 'relative',
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '80px 24px 100px',
-          textAlign: 'center',
-        }}
-      >
+      {/* Padding lives in `.bb-hero` (globals.css) so it can tighten on
+          mobile — the inline 80px top padding was leaving the pill
+          badge floating mid-screen on phones. */}
+      <section className="bb-hero">
         {/* Ambient glow orb */}
         <div
           aria-hidden="true"
@@ -207,17 +202,10 @@ export default async function Home() {
           </a>
         </div>
 
-        {/* Hero stats */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-            gap: 24,
-            maxWidth: 600,
-            margin: '64px auto 0',
-            textAlign: 'center',
-          }}
-        >
+        {/* Hero stats — `.bb-hero-stats` defines a tighter grid + smaller
+            top margin on mobile so the three numbers sit closer to the
+            CTA buttons instead of floating below a big gap. */}
+        <div className="bb-hero-stats">
           <Stat value={formatSchemeCount(schemeCount)} label="Verified schemes" />
           <Stat value="6" label="Languages" />
           <Stat value="100%" label="Official sources" />
@@ -225,14 +213,7 @@ export default async function Home() {
       </section>
 
       {/* FEATURES ───────────────────────────────────────────────────── */}
-      <section
-        aria-labelledby="features-heading"
-        style={{
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '40px 24px 80px',
-        }}
-      >
+      <section aria-labelledby="features-heading" className="bb-section">
         <div style={{ textAlign: 'center', marginBottom: 56 }}>
           <p
             style={{
@@ -300,14 +281,7 @@ export default async function Home() {
       </section>
 
       {/* CATEGORIES ─────────────────────────────────────────────────── */}
-      <section
-        aria-labelledby="categories-heading"
-        style={{
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '40px 24px 80px',
-        }}
-      >
+      <section aria-labelledby="categories-heading" className="bb-section">
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <h2 id="categories-heading" style={{ margin: '0 0 12px' }}>
             Explore by category
@@ -331,25 +305,11 @@ export default async function Home() {
       </section>
 
       {/* HOW IT WORKS ───────────────────────────────────────────────── */}
-      <section
-        aria-labelledby="how-heading"
-        style={{
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '40px 24px 80px',
-        }}
-      >
-        <div
-          style={{
-            background:
-              'linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%)',
-            border: '1px solid #e4e4e7',
-            borderRadius: 24,
-            padding: 48,
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
+      <section aria-labelledby="how-heading" className="bb-section bb-section--how">
+        {/* Card padding/radius/background live in `.bb-how-card` so we
+            can drop the inner padding from 48px to 28px on mobile —
+            48px left only ~260px of usable width on a 360px phone. */}
+        <div className="bb-how-card">
           {/* Decorative blur */}
           <div
             aria-hidden="true"
@@ -394,13 +354,7 @@ export default async function Home() {
       </section>
 
       {/* TRUST BAR ──────────────────────────────────────────────────── */}
-      <section
-        style={{
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '0 24px 80px',
-        }}
-      >
+      <section className="bb-section bb-section--trust">
         <div
           style={{
             display: 'flex',

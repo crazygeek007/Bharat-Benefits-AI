@@ -80,7 +80,10 @@ export function LanguageSwitcher({
   return (
     <label htmlFor={id} className={className} style={LABEL_STYLE}>
       <span aria-hidden="true">🌐</span>
-      <span>{t('languageSwitcher.label')}</span>
+      {/* "Language" text label is hidden on mobile via .bb-lang-label
+         in responsive.css so the header fits on a single row on phones
+         (the globe icon + dropdown carry enough meaning on their own). */}
+      <span className="bb-lang-label">{t('languageSwitcher.label')}</span>
       <select
         id={id}
         value={locale}

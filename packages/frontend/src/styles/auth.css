@@ -25,18 +25,30 @@
 
 /* ─── Form column ────────────────────────────────────────────────────── */
 
+/* Form column.
+ *
+ * Mobile: top-aligned with snug padding. The previous rule used
+ *   justify-content: center; min-height: 100dvh;
+ * which on a tall phone (>800px viewport) parked the form mid-screen
+ * with several hundred pixels of empty space between the site header
+ * and the form's own brand row. That read as "broken / loading" — the
+ * exact opposite of the premium-app feel we want.
+ *
+ * Tablet+ keeps the centered split-screen layout (the gradient panel
+ * to the right balances the form, so vertical centering looks right).
+ */
 .bb-auth-form-col {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
-  padding: 40px 24px;
-  min-height: 100dvh;
+  padding: 24px 20px 40px;
 }
 
 @media (min-width: 768px) {
   .bb-auth-form-col {
+    justify-content: center;
     padding: 48px 56px;
+    min-height: 100dvh;
   }
 }
 
@@ -45,8 +57,16 @@
   max-width: 420px;
 }
 
+/* Brand row inside the auth form.
+ *
+ * Hidden on mobile because the site header already shows the brand
+ * directly above the form — repeating it left two "Bharat Benefits
+ * AI" wordmarks stacked on each other, which read as a layout bug.
+ * Restored at tablet+ where the form column sits in its own split
+ * pane and benefits from a brand anchor at the top.
+ */
 .bb-auth-brand-row {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 10px;
   margin-bottom: 40px;
@@ -59,6 +79,12 @@
 
 .bb-auth-brand-row:hover {
   color: var(--brand);
+}
+
+@media (min-width: 768px) {
+  .bb-auth-brand-row {
+    display: flex;
+  }
 }
 
 .bb-auth-brand-mark {

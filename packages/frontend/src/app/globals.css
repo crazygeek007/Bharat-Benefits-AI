@@ -446,3 +446,80 @@ a:hover {
   transform: translateY(-1px);
   color: var(--text);
 }
+
+/* ─── Landing-page section padding ─────────────────────────────────── */
+
+/* Inline `padding: '80px 24px 100px'` on the hero (and similar on the
+   other landing sections) left huge empty space at the top of mobile
+   viewports — the pill badge floated 200+px below the header bar. The
+   classes below are mobile-first: tight by default, generous on
+   tablet+. Inline padding has been removed from the matching JSX. */
+
+.bb-hero {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 16px 48px;
+  text-align: center;
+}
+
+.bb-section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.bb-section--how {
+  padding: 24px 16px 48px;
+}
+
+.bb-section--trust {
+  padding: 0 16px 48px;
+}
+
+.bb-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  max-width: 600px;
+  margin: 40px auto 0;
+  text-align: center;
+}
+
+.bb-how-card {
+  background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+@media (min-width: 768px) {
+  .bb-hero {
+    padding: 80px 24px 100px;
+  }
+
+  .bb-section {
+    padding: 40px 24px 80px;
+  }
+
+  .bb-section--how {
+    padding: 40px 24px 80px;
+  }
+
+  .bb-section--trust {
+    padding: 0 24px 80px;
+  }
+
+  .bb-hero-stats {
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 24px;
+    margin-top: 64px;
+  }
+
+  .bb-how-card {
+    border-radius: 24px;
+    padding: 48px;
+  }
+}

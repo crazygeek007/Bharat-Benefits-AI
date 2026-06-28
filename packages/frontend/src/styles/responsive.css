@@ -158,8 +158,8 @@ body {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  min-height: 60px;
+  padding: 10px 12px;
+  min-height: 56px;
   max-width: 1200px;
   margin: 0 auto;
   /* allow dropdowns to extend beyond the header bar */
@@ -203,7 +203,25 @@ body {
 .bb-site-header__controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+/* Hide the "Language" text label on mobile — the globe glyph + the
+   visible dropdown carry the meaning, and removing the label is what
+   lets brand + lang + Sign in + hamburger all fit on a single header
+   row at 360–400px viewports. Restored at the tablet breakpoint. */
+.bb-lang-label {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .bb-site-header__controls {
+    gap: 8px;
+  }
+
+  .bb-lang-label {
+    display: inline;
+  }
 }
 
 /*
